@@ -1,31 +1,164 @@
-# Python
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+*.egg
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+
+# Virtual environments
 venv/
 .venv/
 env/
 .env
+ENV/
+.nox/
+.pyenv/
+.python-version
+
+# Test / lint / type artifacts
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+.pyright/
 
-# Node
+# Jupyter
+.ipynb_checkpoints/
+
+# --- Node / frontend ---
 node_modules/
 dist/
 .vite/
-*.log
+*.tsbuildinfo
+.npm/
+.yarn/
+.pnp.*
 
-# Backend runtime
+# --- Backend runtime data ---
+# Per-segment synthesis cache (regenerated on first run)
+backend/cache/
+backend/cache/*
+!backend/cache/.gitkeep
+
+# User-uploaded voices (PII / copyrighted material)
 backend/uploads/*
 !backend/uploads/.gitkeep
-backend/voices/*.wav
+!backend/uploads/voices.json
 
-# OS / editor
+# Built-in voice reference clips are private recordings; only
+# the metadata manifest is tracked. If you want to commit
+# actual built-in WAVs, drop `!backend/voices/*.wav` etc. below.
+backend/voices/*.wav
+backend/voices/*.mp3
+backend/voices/*.flac
+backend/voices/*.ogg
+!backend/voices/README.md
+!backend/voices/voices.json
+!backend/voices/.gitkeep
+
+# VibeVoice reference audio (1.5B model lives under HF cache)
+models/
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# --- Environment / secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+secrets/
+
+# --- Logs / temp / scratch ---
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+debug.log
+smoke*.log
+*.bak
+
+# Test artifacts
+test_join.wav
+test_*.wav
+seg*.wav
+app.tmp
+
+# --- OS / editor ---
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Editor configs
 .vscode/
 .idea/
-*.swp
+*.code-workspace
+.history/
+
+# Local CommandCode data
+.commandcode/
+
+# Coverage reports
+*.lcov
+coverage/
+.nyc_output/
+
+# Build / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.dist-info/
+
+# Profiling
+*.prof
+*.lprof
+.pytest_cache/
+.tox/
+.coverage
+coverage.xml
+*.cover
+
+# Mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyright
+.pyright/
+
+# ruff
+.ruff_cache/
+
+# Datasets / large files
+data/
+datasets/
+*.tar.gz
+*.zip
+*.7z
+*.rar
+*.gz
