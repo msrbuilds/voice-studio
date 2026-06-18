@@ -1,6 +1,7 @@
 # VibeVoice Studio
 
 A local web UI for **Microsoft's VibeVoice-1.5B** text-to-speech model. Multi-segment podcast editor, voice uploads, GPU/CPU/MPS backend, fully offline after first run.
+<img width="2536" height="1433" alt="VibeVoice-Studio-06-18-2026_10_53_AM" src="https://github.com/user-attachments/assets/78ad65a4-67c9-4902-8627-8c8532a7176e" />
 
 ```
 ┌─────────────────────────┐         ┌──────────────────────────┐
