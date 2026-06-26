@@ -11,6 +11,7 @@ export interface Voice {
   size_bytes: number | null;
   duration_sec: number | null;
   sample_rate: number | null;
+  engine: string | null;
 }
 
 export interface VoiceMetadata {
@@ -30,6 +31,20 @@ export interface ConfigResponse {
   voices_dir: string;
   uploads_dir: string;
   streaming: "planned" | "available" | "unavailable";
+  active_engine: string | null;
+  engines: EngineInfo[];
+}
+
+export interface EngineInfo {
+  name: string;
+  display_name: string;
+  description: string;
+  loaded: boolean;
+  supports_voice_cloning: boolean;
+  sample_rate: number | null;
+  max_speakers: number;
+  default_cfg_scale: number | null;
+  active: boolean;
 }
 
 export interface HealthResponse {

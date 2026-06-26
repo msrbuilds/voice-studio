@@ -109,10 +109,17 @@ def test_health_and_config(tmp_path):
 
 
 def test_voices_list_empty(tmp_path):
+    """An empty filesystem still returns Kokoro's built-in voice catalog."""
     client = _make_client(tmp_path / "v", tmp_path / "u")
     r = client.get("/api/voices")
     assert r.status_code == 200
-    assert r.json() == {"voices": []}
+    body = r.json()
+    # Filesystem empty; Kokoro's 38 built-in voices should still be present.
+    voices = body["voices"]
+    assert all(v["engine"] == "kokoro" for v in voices)
+    assert len(voices) >= 30
+    # No uploads or built-in files were placed.
+    assert not any(v["source"] == "upload" for v in voices)
 
 
 def test_synthesize_empty_text_rejected(tmp_path):
@@ -247,6 +254,54 @@ def test_synthesize_canonical_speaker_tags(tmp_path):
     assert r.status_code == 200, r.text
 
 
+def test_engines_list_and_activate(tmp_path):
+    """Engine endpoints: list, activate, unknown engine."""
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+
+    r = client.get("/api/engines")
+    assert r.status_code == 200
+    body = r.json()
+    assert "active" in body and "engines" in body
+    names = [e["name"] for e in body["engines"]]
+    assert "vibevoice" in names and "kokoro" in names and "chatterbox" in names
+    assert body["active"] == "vibevoice"
+    assert any(e["name"] == "vibevoice" and e["active"] for e in body["engines"])
+
+    # /api/config should also surface engines + active
+    r = client.get("/api/config")
+    assert r.status_code == 200
+    cfg = r.json()
+    assert cfg["active_engine"] == "vibevoice"
+    assert any(e["name"] == "kokoro" for e in cfg["engines"])
+    assert any(e["name"] == "chatterbox" for e in cfg["engines"])
+
+    # Switch to kokoro
+    r = client.post("/api/engines/activate", json={"name": "kokoro"})
+    assert r.status_code == 200
+    assert r.json()["name"] == "kokoro"
+    assert r.json()["active"] is True
+
+    r = client.get("/api/engines")
+    assert r.json()["active"] == "kokoro"
+
+    # Switch back
+    r = client.post("/api/engines/activate", json={"name": "vibevoice"})
+    assert r.status_code == 200
+
+    # Unknown engine → 404
+    r = client.post("/api/engines/activate", json={"name": "nope"})
+    assert r.status_code == 404
+
+
+def test_engines_voice_tag(tmp_path):
+    """Every voice returned by /api/voices has an `engine` field set."""
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.get("/api/voices")
+    assert r.status_code == 200
+    for v in r.json()["voices"]:
+        assert v["engine"] in ("kokoro", "vibevoice")
+
+
 if __name__ == "__main__":
     import tempfile
 
@@ -262,6 +317,8 @@ if __name__ == "__main__":
             test_upload_rejects_bad_extension,
             test_synthesize_happy_path_with_stub,
             test_synthesize_canonical_speaker_tags,
+            test_engines_list_and_activate,
+            test_engines_voice_tag,
         ]
         for fn in tests:
             try:

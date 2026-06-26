@@ -4,16 +4,19 @@ import type { Voice, VoiceMetadata } from "@/types/models";
 
 interface Props {
   voice: Voice | null;
+  theme: "light" | "dark";
   onClose: () => void;
   onSave: (meta: VoiceMetadata) => Promise<void>;
 }
 
-export function VoiceMetaDialog({ voice, onClose, onSave }: Props) {
+export function VoiceMetaDialog({ voice, theme, onClose, onSave }: Props) {
   const [name, setName] = useState("");
   const [gender, setGender] = useState<"man" | "woman" | "nonbinary" | "">("");
   const [language, setLanguage] = useState("en");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isDark = theme === "dark";
 
   useEffect(() => {
     if (voice) {
@@ -42,54 +45,66 @@ export function VoiceMetaDialog({ voice, onClose, onSave }: Props) {
     }
   };
 
+  const surface = isDark ? "bg-zinc-900" : "bg-white";
+  const border = isDark ? "border-zinc-800" : "border-gray-200";
+  const text = isDark ? "text-white" : "text-gray-900";
+  const labelText = isDark ? "text-zinc-400" : "text-gray-600";
+  const subtext = isDark ? "text-zinc-500" : "text-gray-500";
+  const idColor = isDark ? "text-zinc-400" : "text-gray-700";
+  const inputBg = isDark ? "bg-zinc-800" : "bg-white";
+  const inputBorder = isDark ? "border-zinc-700" : "border-gray-300";
+  const inputText = isDark ? "text-white" : "text-gray-900";
+  const placeholder = isDark ? "placeholder-zinc-500" : "placeholder-gray-400";
+  const cancelText = isDark ? "text-zinc-300 hover:text-white" : "text-gray-600 hover:text-gray-900";
+
   return (
     <div
       className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
     >
       <div
-        className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl w-full max-w-md p-6"
+        className={`${surface} ${border} border rounded-xl shadow-xl w-full max-w-md p-6`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Pencil className="w-5 h-5 text-teal-400" />
-            <h2 className="text-lg font-semibold text-white">Edit voice</h2>
+            <h2 className={`text-lg font-semibold ${text}`}>Edit voice</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-white"
+            className={`p-1 ${isDark ? "text-zinc-400 hover:text-white" : "text-gray-400 hover:text-gray-900"}`}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <p className="text-xs text-zinc-500 mb-4">
-          <code className="text-zinc-400">{voice.id}</code>
+        <p className={`text-xs mb-4 ${subtext}`}>
+          <code className={idColor}>{voice.id}</code>
           {" · "}
           <span className="capitalize">{voice.source}</span>
         </p>
 
         <div className="space-y-3">
           <label className="block">
-            <span className="text-xs font-medium text-zinc-400 mb-1 block">Display name</span>
+            <span className={`text-xs font-medium mb-1 block ${labelText}`}>Display name</span>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Amelia"
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-teal-500"
+              className={`w-full px-3 py-2 ${inputBg} ${inputBorder} border rounded-md text-sm ${inputText} ${placeholder} focus:outline-none focus:border-teal-500`}
             />
           </label>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-xs font-medium text-zinc-400 mb-1 block">Gender</span>
+              <span className={`text-xs font-medium mb-1 block ${labelText}`}>Gender</span>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value as typeof gender)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white focus:outline-none focus:border-teal-500"
+                className={`w-full px-3 py-2 ${inputBg} ${inputBorder} border rounded-md text-sm ${inputText} focus:outline-none focus:border-teal-500`}
               >
                 <option value="">—</option>
                 <option value="woman">Woman</option>
@@ -98,14 +113,14 @@ export function VoiceMetaDialog({ voice, onClose, onSave }: Props) {
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-zinc-400 mb-1 block">Language</span>
+              <span className={`text-xs font-medium mb-1 block ${labelText}`}>Language</span>
               <input
                 type="text"
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
                 placeholder="en"
                 maxLength={8}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-teal-500"
+                className={`w-full px-3 py-2 ${inputBg} ${inputBorder} border rounded-md text-sm ${inputText} ${placeholder} focus:outline-none focus:border-teal-500`}
               />
             </label>
           </div>
@@ -120,7 +135,7 @@ export function VoiceMetaDialog({ voice, onClose, onSave }: Props) {
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="px-4 py-2 text-sm text-zinc-300 hover:text-white"
+            className={`px-4 py-2 text-sm ${cancelText}`}
           >
             Cancel
           </button>

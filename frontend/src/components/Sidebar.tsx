@@ -18,6 +18,8 @@ interface Props {
   onUploadVoice: (file: File, meta: VoiceMetadata) => Promise<unknown>;
   onRemoveVoice: (id: string) => Promise<void>;
   onUpdateVoiceMeta: (voiceId: string, meta: VoiceMetadata) => Promise<unknown>;
+  supportsVoiceCloning: boolean;
+  activeEngine: string | null;
 }
 
 export function Sidebar({
@@ -33,6 +35,7 @@ export function Sidebar({
   onUploadVoice,
   onRemoveVoice,
   onUpdateVoiceMeta,
+  supportsVoiceCloning,
 }: Props) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editingVoice, setEditingVoice] = useState<Voice | null>(null);
@@ -40,18 +43,36 @@ export function Sidebar({
   const builtins = voices.filter((v) => v.source === "builtin");
   const uploads = voices.filter((v) => v.source === "upload");
 
+  const isDark = theme === "dark";
+  // Surface tokens — the sidebar has its own palette in both themes so it
+  // reads as a distinct panel from the main content.
+  const surface = isDark ? "bg-zinc-950" : "bg-white";
+  const border = isDark ? "border-zinc-800" : "border-gray-200";
+  const heading = isDark ? "text-zinc-500" : "text-gray-500";
+  const bodyText = isDark ? "text-zinc-300" : "text-gray-700";
+  const subtle = isDark ? "text-zinc-500" : "text-gray-500";
+  const iconBtn = isDark
+    ? "text-zinc-400 hover:text-teal-400"
+    : "text-gray-400 hover:text-teal-600";
+  const hover = isDark ? "hover:bg-zinc-900" : "hover:bg-gray-100";
+  const danger = isDark
+    ? "text-zinc-500 hover:text-red-400"
+    : "text-gray-400 hover:text-red-600";
+  const empty = isDark ? "text-zinc-600" : "text-gray-400";
+
   return (
     <aside
-      className="w-80 fixed top-0 left-0 bottom-0 z-10 border-r flex flex-col
-        bg-zinc-950 border-zinc-800"
+      className={`w-80 fixed top-0 left-0 bottom-0 z-10 border-r flex flex-col transition-colors ${surface} ${border}`}
     >
-      <div className="p-5 border-b border-zinc-800 flex items-center gap-3">
+      <div className={`p-5 border-b flex items-center gap-3 ${border}`}>
         <div className="w-9 h-9 rounded-lg bg-teal-600/20 flex items-center justify-center">
           <Waves className="w-5 h-5 text-teal-400" />
         </div>
         <div>
-          <h1 className="font-semibold text-white text-sm">VibeVoice Studio</h1>
-          <p className="text-xs text-zinc-500">Local · {config?.model_id ?? "—"}</p>
+          <h1 className={`font-semibold text-sm ${isDark ? "text-white" : "text-gray-900"}`}>
+            VibeVoice Studio
+          </h1>
+          <p className={`text-xs ${heading}`}>Local · {config?.model_id ?? "—"}</p>
         </div>
       </div>
 
@@ -59,13 +80,13 @@ export function Sidebar({
         {/* Speakers */}
         <section>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <h2 className={`text-xs font-semibold uppercase tracking-wide ${heading}`}>
               Speakers
             </h2>
             <button
               type="button"
               onClick={onAddSpeaker}
-              className="p-1 text-zinc-400 hover:text-teal-400 transition-colors"
+              className={`p-1 transition-colors ${iconBtn}`}
               title="Add speaker"
             >
               <Plus className="w-4 h-4" />
@@ -78,6 +99,7 @@ export function Sidebar({
                 key={sp.id}
                 speaker={sp}
                 voices={voices}
+                isDark={isDark}
                 onUpdate={(patch) => onUpdateSpeaker(sp.id, patch)}
                 onRemove={() => onRemoveSpeaker(sp.id)}
                 onSetVoice={(v) => onSetSpeakerVoice(sp.id, v)}
@@ -89,24 +111,22 @@ export function Sidebar({
 
         {/* Built-in voices */}
         <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">
+          <h2 className={`text-xs font-semibold uppercase tracking-wide mb-2 ${heading}`}>
             Built-in voices
           </h2>
           <ul className="space-y-1">
             {builtins.map((v) => (
               <li
                 key={v.id}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-zinc-300"
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm ${bodyText} ${hover}`}
               >
-                <Volume2 className="w-4 h-4 text-zinc-500" />
+                <Volume2 className={`w-4 h-4 ${subtle}`} />
                 <span className="flex-1 truncate">{v.name}</span>
-                {v.gender && (
-                  <span className="text-xs text-zinc-500">{v.gender}</span>
-                )}
+                {v.gender && <span className={`text-xs ${subtle}`}>{v.gender}</span>}
                 <button
                   type="button"
                   onClick={() => setEditingVoice(v)}
-                  className="p-1 text-zinc-500 hover:text-teal-400"
+                  className={`p-1 ${iconBtn}`}
                   title="Edit name / gender / language"
                 >
                   <Pencil className="w-3.5 h-3.5" />
@@ -114,23 +134,25 @@ export function Sidebar({
               </li>
             ))}
             {builtins.length === 0 && (
-              <li className="text-xs text-zinc-600 italic px-2 py-1.5">
+              <li className={`text-xs italic px-2 py-1.5 ${empty}`}>
                 No built-in voices. Drop .wav files into backend/voices/.
               </li>
             )}
           </ul>
         </section>
 
-        {/* User uploads */}
+        {/* User uploads — hidden when the active engine doesn't support
+            voice cloning (Kokoro uses its own built-in voice catalog). */}
+        {supportsVoiceCloning && (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <h2 className={`text-xs font-semibold uppercase tracking-wide ${heading}`}>
               My voices
             </h2>
             <button
               type="button"
               onClick={() => setUploadOpen(true)}
-              className="p-1 text-zinc-400 hover:text-teal-400 transition-colors"
+              className={`p-1 transition-colors ${iconBtn}`}
               title="Upload voice"
             >
               <Plus className="w-4 h-4" />
@@ -140,17 +162,15 @@ export function Sidebar({
             {uploads.map((v) => (
               <li
                 key={v.id}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-zinc-300 hover:bg-zinc-900"
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm ${bodyText} ${hover}`}
               >
                 <Mic2 className="w-4 h-4 text-teal-500" />
                 <span className="flex-1 truncate">{v.name}</span>
-                {v.gender && (
-                  <span className="text-xs text-zinc-500">{v.gender}</span>
-                )}
+                {v.gender && <span className={`text-xs ${subtle}`}>{v.gender}</span>}
                 <button
                   type="button"
                   onClick={() => setEditingVoice(v)}
-                  className="p-1 text-zinc-500 hover:text-teal-400"
+                  className={`p-1 ${iconBtn}`}
                   title="Edit name / gender / language"
                 >
                   <Pencil className="w-3.5 h-3.5" />
@@ -158,7 +178,7 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={() => onRemoveVoice(v.id)}
-                  className="p-1 text-zinc-500 hover:text-red-400"
+                  className={`p-1 ${danger}`}
                   title="Delete"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -166,20 +186,21 @@ export function Sidebar({
               </li>
             ))}
             {uploads.length === 0 && (
-              <li className="text-xs text-zinc-600 italic px-2 py-1.5">
+              <li className={`text-xs italic px-2 py-1.5 ${empty}`}>
                 Click + to upload a voice.
               </li>
             )}
           </ul>
         </section>
+        )}
       </div>
 
-      <div className="p-4 border-t border-zinc-800 space-y-2">
+      <div className={`p-4 border-t space-y-2 ${border}`}>
         {config && (
-          <div className="text-xs text-zinc-500 space-y-0.5">
-            <div>device: <span className="text-zinc-300">{config.device}</span></div>
-            <div>dtype: <span className="text-zinc-300">{config.dtype}</span></div>
-            <div>sr: <span className="text-zinc-300">{config.sampling_rate} Hz</span></div>
+          <div className={`text-xs space-y-0.5 ${subtle} flex items-center gap-4`}>
+            <div>device: <span className={bodyText}>{config.device}</span></div>
+            <div>dtype: <span className={bodyText}>{config.dtype}</span></div>
+            <div>sr: <span className={bodyText}>{config.sampling_rate} Hz</span></div>
           </div>
         )}
         <ThemeToggle theme={theme} onToggle={onThemeToggle} />
@@ -187,12 +208,14 @@ export function Sidebar({
 
       <UploadVoiceDialog
         open={uploadOpen}
+        theme={theme}
         onClose={() => setUploadOpen(false)}
         onUpload={onUploadVoice}
       />
 
       <VoiceMetaDialog
         voice={editingVoice}
+        theme={theme}
         onClose={() => setEditingVoice(null)}
         onSave={async (meta) => {
           if (editingVoice) {
@@ -208,6 +231,7 @@ export function Sidebar({
 function SpeakerRow({
   speaker,
   voices,
+  isDark,
   onUpdate,
   onRemove,
   onSetVoice,
@@ -215,13 +239,24 @@ function SpeakerRow({
 }: {
   speaker: Speaker;
   voices: Voice[];
+  isDark: boolean;
   onUpdate: (patch: Partial<Speaker>) => void;
   onRemove: () => void;
   onSetVoice: (v: string) => void;
   canDelete: boolean;
 }) {
+  const panelBg = isDark ? "bg-zinc-900/50" : "bg-gray-50";
+  const panelBorder = isDark ? "border-zinc-800" : "border-gray-200";
+  const inputText = isDark ? "text-white" : "text-gray-900";
+  const selectBg = isDark ? "bg-zinc-800" : "bg-white";
+  const selectBorder = isDark ? "border-zinc-700" : "border-gray-300";
+  const selectText = isDark ? "text-white" : "text-gray-900";
+  const danger = isDark
+    ? "text-zinc-500 hover:text-red-400"
+    : "text-gray-400 hover:text-red-600";
+
   return (
-    <div className="p-3 rounded-lg border border-zinc-800 bg-zinc-900/50">
+    <div className={`p-3 rounded-lg border ${panelBg} ${panelBorder}`}>
       <div className="flex items-center gap-2 mb-2">
         <span
           className="w-3 h-3 rounded-full shrink-0"
@@ -231,13 +266,13 @@ function SpeakerRow({
           type="text"
           value={speaker.name}
           onChange={(e) => onUpdate({ name: e.target.value })}
-          className="flex-1 bg-transparent text-sm text-white font-medium focus:outline-none focus:ring-1 focus:ring-teal-500/50 rounded px-1"
+          className={`flex-1 bg-transparent text-sm font-medium focus:outline-none focus:ring-1 focus:ring-teal-500/50 rounded px-1 ${inputText}`}
         />
         {canDelete && (
           <button
             type="button"
             onClick={onRemove}
-            className="p-1 text-zinc-500 hover:text-red-400"
+            className={`p-1 ${danger}`}
             title="Delete speaker"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -247,7 +282,7 @@ function SpeakerRow({
       <select
         value={speaker.voice}
         onChange={(e) => onSetVoice(e.target.value)}
-        className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:border-teal-500"
+        className={`w-full border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-teal-500 ${selectBg} ${selectBorder} ${selectText}`}
       >
         <option value="">Select voice…</option>
         {voices.map((v) => (

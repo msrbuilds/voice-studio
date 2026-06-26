@@ -48,6 +48,9 @@ class VoiceInfo:
     size_bytes: int | None = None
     duration_sec: float | None = None
     sample_rate: int | None = None
+    # Which TTS engine owns this voice ("vibevoice", "kokoro", ...). For
+    # filesystem-based voices, this is set at registration time.
+    engine: str | None = None
 
 
 @dataclass
@@ -73,6 +76,12 @@ class VoiceRegistry:
         # on construction. Modified by save_upload() and update_meta().
         self._meta: dict[str, dict] = {}
         self._meta_sources: dict[str, Path] = {}  # voice_id -> which json file owns it
+        # Per-engine voice registries. Engines that have their own
+        # built-in voice catalog (Kokoro) call `register_engine_voices()`
+        # to inject their voices into the global listing. The voice ids
+        # are namespaced with the engine name in the dict to avoid
+        # collisions if two engines happen to use the same id.
+        self._engine_voices: dict[str, list[VoiceInfo]] = {}
         self._load_meta()
 
     # ------------------------------------------------------------------ scan --
@@ -272,7 +281,42 @@ class VoiceRegistry:
     # ------------------------------------------------------------------- API --
 
     def list(self) -> list[VoiceInfo]:
-        return [e.info for e in self._scan_builtin() + self._scan_uploads()]
+        """Return the merged voice catalog: filesystem voices + engine voices.
+
+        Filesystem voices (built-in directory + user uploads) are tagged
+        with engine="vibevoice" since that's the only engine that supports
+        voice cloning from arbitrary audio. Engine voices come from the
+        per-engine registries populated via `register_engine_voices()`.
+        """
+        fs_voices: list[VoiceInfo] = []
+        for e in self._scan_builtin() + self._scan_uploads():
+            # Filesystem voices only work with voice-cloning engines. We
+            # default the tag to "vibevoice"; an engine that explicitly
+            # wants filesystem voices would be set up to claim them.
+            e.info.engine = e.info.engine or "vibevoice"
+            fs_voices.append(e.info)
+        engine_voices: list[VoiceInfo] = []
+        for engine_name, voices in self._engine_voices.items():
+            for v in voices:
+                v.engine = engine_name
+                engine_voices.append(v)
+        return fs_voices + engine_voices
+
+    def register_engine_voices(self, engine_name: str, voices: list[VoiceInfo]) -> None:
+        """Add (or replace) the voice catalog for an engine.
+
+        Called at app startup by `EngineManager` for every engine that
+        exposes a built-in voice set. VibeVoice uses an empty list (its
+        voices come from the filesystem).
+        """
+        self._engine_voices[engine_name] = list(voices)
+
+    def get_engine_for_voice(self, voice_id: str) -> str | None:
+        """Which engine owns this voice id? Returns None if not found."""
+        for v in self.list():
+            if v.id == voice_id:
+                return v.engine
+        return None
 
     def get(self, voice_id: str) -> Path:
         if not voice_id:
@@ -288,6 +332,17 @@ class VoiceRegistry:
 
     def is_builtin(self, voice_id: str) -> bool:
         return (self.voices_dir / f"{voice_id}.wav").is_file()
+
+    def get_language(self, voice_id: str) -> str | None:
+        """Return the language code for a voice (e.g. 'ur', 'en'), or None.
+
+        Used by the synthesizer to inject a language hint into the model
+        prompt when generating non-English speech.
+        """
+        for v in self.list():
+            if v.id == voice_id:
+                return v.language
+        return None
 
     def save_upload(
         self,

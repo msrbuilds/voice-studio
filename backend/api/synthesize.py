@@ -61,6 +61,11 @@ def synthesize(
                 inference_steps=body.inference_steps,
                 disable_prefill=body.disable_prefill,
                 force_regenerate=body.force_regenerate,
+                engine=body.engine,
+                speed=body.speed,
+                cfg_weight=body.cfg_weight,
+                exaggeration=body.exaggeration,
+                language_id=body.language_id,
             )
         )
     except BackendError:
@@ -73,6 +78,7 @@ def synthesize(
         "X-Inference-Ms": str(result.inference_ms),
         "X-Audio-Duration-Sec": f"{result.duration_sec:.3f}",
         "X-Cache": "hit" if result.cache_hit else "miss",
+        "X-Engine": result.engine or svc.active_engine_name,
     }
 
     if response_format == "base64":

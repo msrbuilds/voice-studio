@@ -25,6 +25,7 @@ def list_voices(reg: VoiceRegistry = Depends(get_voice_registry)) -> VoiceListRe
             size_bytes=v.size_bytes,
             duration_sec=v.duration_sec,
             sample_rate=v.sample_rate,
+            engine=v.engine,
         )
         for v in reg.list()
     ]
@@ -94,6 +95,7 @@ def update_voice_meta(
         size_bytes=info.size_bytes,
         duration_sec=info.duration_sec,
         sample_rate=info.sample_rate,
+        engine=info.engine,
     )
 
 

@@ -54,3 +54,15 @@ class OutOfMemory(BackendError):
 class SynthesisTimeout(BackendError):
     code = "synthesis_timeout"
     http_status = 504
+
+
+class EngineStreamingNotSupported(BackendError):
+    """Raised when a streaming request targets an engine that doesn't
+    support chunked streaming (e.g. VibeVoice, Chatterbox in this version).
+
+    The HTTP route maps this to a 501 + JSON error body. The WebSocket
+    route maps this to a 1008 close code.
+    """
+
+    code = "engine_streaming_not_supported"
+    http_status = 501

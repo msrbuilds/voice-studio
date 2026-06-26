@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import Request
 
+from ..core.engine_manager import EngineManager
 from ..core.model import ModelManager
 from ..services.join_cache import JoinCache
 from ..services.synth_cache import SynthCache
@@ -13,6 +14,10 @@ from ..services.voices import VoiceRegistry
 
 def get_model_manager(request: Request) -> ModelManager:
     return request.app.state.model_manager  # type: ignore[no-any-return]
+
+
+def get_engine_manager(request: Request) -> EngineManager:
+    return request.app.state.engine_manager  # type: ignore[no-any-return]
 
 
 def get_voice_registry(request: Request) -> VoiceRegistry:

@@ -7,6 +7,7 @@ import { SegmentCard } from "@/components/SegmentCard";
 import { Sidebar } from "@/components/Sidebar";
 import { useConfig } from "@/hooks/useConfig";
 import { useVoices } from "@/hooks/useVoices";
+import { useEngine } from "@/hooks/useEngine";
 import { ApiError, downloadPodcast, synthesizeWav, updateVoiceMeta } from "@/lib/api";
 import {
   AudioPlayer,
@@ -15,6 +16,7 @@ import {
 import { loadSample, type Sample } from "@/lib/samples";
 import { useProject } from "@/lib/store";
 import type { CachedAudio, Project, Speaker, SynthSpeaker } from "@/types/models";
+import { getDefaultCfgForEngine } from "@/lib/engineHints";
 
 type Theme = "light" | "dark";
 
@@ -41,8 +43,20 @@ export default function App() {
     upload: uploadVoice,
     remove: removeVoice,
   } = useVoices();
+  const {
+    engines,
+    activeName: activeEngine,
+    setActive: setActiveEngine,
+    ensureLoaded: ensureEngineLoaded,
+  } = useEngine();
+  const supportsVoiceCloning =
+    engines.find((e) => e.name === activeEngine)?.supports_voice_cloning ?? true;
 
   const [theme, setTheme] = useState<Theme>("dark");
+  const [cfgScale, setCfgScale] = useState<number>(1.3);
+  // Chatterbox Multilingual V3 only — voice expressiveness / dramatization.
+  // Ignored by VibeVoice and Kokoro. Range 0.0–1.0+ (clamped to 0–2 server-side).
+  const [exaggeration, setExaggeration] = useState<number>(0.5);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
@@ -51,6 +65,13 @@ export default function App() {
   const [exportProgress, setExportProgress] = useState("");
   const [stopExport, setStopExport] = useState(false);
   const [toast, setToast] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  // Measured heights of the fixed top/bottom bars, so the segment list can
+  // pad itself by exactly the rendered heights (avoids overlap if a bar
+  // wraps to a second row at narrow viewport widths). Bumped initial
+  // guesses to the largest plausible single-row value, and we add a
+  // safety buffer below so a 1-2 px rounding error never causes overlap.
+  const [actionBarH, setActionBarH] = useState<number>(88);
+  const [playerFooterH, setPlayerFooterH] = useState<number>(96);
 
   const playerRef = useRef<AudioPlayer>(new AudioPlayer());
   const stopAllRef = useRef(false);
@@ -74,6 +95,32 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Snap cfgScale to the active engine's default when the engine
+  // changes (or on first mount if the persisted last-engine wasn't
+  // VibeVoice). This keeps the slider visually centered in its new
+  // range — e.g. switching from VibeVoice (1.3 in a 0.5–5.0 range)
+  // to Chatterbox (default 0.5 in a 0.0–1.0 range) lands near the
+  // middle instead of pinned at the right edge.
+  useEffect(() => {
+    if (!activeEngine) return;
+    setCfgScale((current) => {
+      const target = getDefaultCfgForEngine(activeEngine);
+      // Only snap if the current value is way outside the new range —
+      // i.e. it was clearly tuned for a different engine. This way
+      // a deliberate user tweak on engine A still survives a quick
+      // toggle to engine B and back.
+      const otherEngines: Record<string, [number, number]> = {
+        vibevoice: [0.5, 5.0],
+        kokoro: [0.5, 5.0],
+        chatterbox: [0.0, 1.0],
+      };
+      const [, max] = otherEngines[activeEngine] ?? [0.5, 5.0];
+      // If current value is more than 10% beyond the new engine's max,
+      // snap. Otherwise leave it (the user already dialed something in).
+      return current > max * 1.1 ? target : current;
+    });
+  }, [activeEngine]);
+
   useEffect(() => {
     return () => {
       playerRef.current.close();
@@ -84,6 +131,28 @@ export default function App() {
     const text = err instanceof ApiError ? err.message : err instanceof Error ? err.message : fallback;
     setToast({ kind: "error", text });
   }, []);
+
+  // Filter the global voice catalog down to the active engine. The
+  // sidebar shouldn't offer Kokoro's voices when VibeVoice is active
+  // (and vice versa) — the backend will reject cross-engine requests
+  // anyway.
+  // Filter the global voice catalog down to voices the active engine can use.
+  // - Kokoro: only its own built-in voice catalog (no voice cloning).
+  // - VibeVoice and Chatterbox: both support voice cloning from arbitrary
+  //   reference audio, so filesystem voices (tagged engine="vibevoice"
+  //   by the registry) are usable by either. We show the same set of
+  //   voices when either voice-cloning engine is active.
+  // - If a future Chatterbox release ships a built-in voice catalog,
+  //   those voices (engine="chatterbox") will also appear here.
+  const displayedVoices = voices.filter((v) => {
+    if (!activeEngine) return true;
+    if (activeEngine === "kokoro") return v.engine === "kokoro";
+    // Both VibeVoice and Chatterbox support cloning → show any voice
+    // tagged with a voice-cloning engine. Today that's only "vibevoice"
+    // (filesystem voices); if Chatterbox adds built-ins later, those
+    // show up too.
+    return v.engine === "vibevoice" || v.engine === "chatterbox";
+  });
 
   // ---- generation ----
 
@@ -102,8 +171,14 @@ export default function App() {
 
       setGeneratingId(segmentId);
       try {
-        const { audioData, cacheHash } = await synthesizeWav(seg.text, speakers, undefined, {
+        // The CFG slider is engine-aware: it maps to VibeVoice's
+        // cfg_scale (range ~0.5–5.0) or Chatterbox's cfg_weight
+        // (range 0.0–1.0, clamped server-side). Other engines ignore it.
+        const isChatterbox = activeEngine === "chatterbox";
+        const { audioData, cacheHash } = await synthesizeWav(seg.text, speakers, cfgScale, {
           forceRegenerate: options.forceRegenerate,
+          cfgWeight: isChatterbox ? cfgScale : null,
+          exaggeration: isChatterbox ? exaggeration : null,
         });
         project.cacheAudio(segmentId, {
           audioData,
@@ -117,7 +192,7 @@ export default function App() {
         setGeneratingId(null);
       }
     },
-    [project, showError],
+    [project, showError, cfgScale, activeEngine],
   );
 
   // ---- playback ----
@@ -340,7 +415,16 @@ export default function App() {
       showError("No segments with text", "Nothing to export");
       return;
     }
-    const payload: { text: string; voice: string; cfg_scale?: number; cache_hash?: string }[] = [];
+    const payload: {
+      text: string;
+      voice: string;
+      cfg_scale?: number;
+      cache_hash?: string;
+      cfg_weight?: number;
+      exaggeration?: number;
+      language_id?: string;
+    }[] = [];
+    const isChatterbox = activeEngine === "chatterbox";
     for (const seg of valid) {
       const speaker = project.speakers.find((s) => s.id === seg.speakerId);
       const voiceId = speaker?.voice;
@@ -355,7 +439,14 @@ export default function App() {
       // segment was regenerated and avoid serving a stale joined WAV.
       const cached = project.audioCache[seg.id];
       const cache_hash = cached?.cacheHash || undefined;
-      payload.push({ text: seg.text, voice: voiceId, ...(cache_hash ? { cache_hash } : {}) });
+      payload.push({
+        text: seg.text,
+        voice: voiceId,
+        cfg_scale: cfgScale,
+        ...(cache_hash ? { cache_hash } : {}),
+        ...(isChatterbox && cfgScale != null ? { cfg_weight: cfgScale } : {}),
+        ...(isChatterbox ? { exaggeration } : {}),
+      });
     }
 
     setIsExporting(true);
@@ -383,7 +474,7 @@ export default function App() {
       setIsExporting(false);
       setExportProgress("");
     }
-  }, [project, showError]);
+  }, [project, showError, cfgScale, activeEngine]);
 
   // ---- derived state ----
 
@@ -434,7 +525,7 @@ export default function App() {
     <div className={`flex min-h-screen ${isDark ? "bg-zinc-950" : "bg-gray-50"}`}>
       <Sidebar
         speakers={project.speakers}
-        voices={voices}
+        voices={displayedVoices}
         config={config}
         theme={theme}
         onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
@@ -445,6 +536,8 @@ export default function App() {
         onUploadVoice={uploadVoice}
         onRemoveVoice={removeVoice}
         onUpdateVoiceMeta={handleUpdateVoiceMeta}
+        supportsVoiceCloning={supportsVoiceCloning}
+        activeEngine={activeEngine}
       />
 
       <main className="flex-1 ml-80 relative">
@@ -454,14 +547,41 @@ export default function App() {
           cachedCount={cachedCount}
           busy={busy}
           isDark={isDark}
+          cfgScale={cfgScale}
+          onCfgScaleChange={setCfgScale}
+          exaggeration={exaggeration}
+          onExaggerationChange={setExaggeration}
+          engines={engines}
+          activeEngine={activeEngine}
+          onSelectEngine={async (name) => {
+            try {
+              await setActiveEngine(name);
+            } catch (err) {
+              showError(err, "Engine switch failed");
+            }
+          }}
+          onLoadEngine={async (name) => {
+            try {
+              await ensureEngineLoaded(name);
+            } catch (err) {
+              showError(err, "Engine load failed");
+            }
+          }}
           onAddSegment={project.addSegment}
           onGenerateAll={handleGenerateAll}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onLoadSample={handleLoadSample}
+          onHeightChange={setActionBarH}
         />
 
-        <div className="pt-28 pb-32 px-6">
+        <div
+          style={{
+            paddingTop: actionBarH + 16,
+            paddingBottom: playerFooterH + 16,
+          }}
+          className="px-6"
+        >
           <div className="max-w-5xl mx-auto">
             {isExporting && (
               <div className="mb-6 p-4 bg-teal-900/30 rounded-xl border border-teal-600/30 flex items-center justify-between">
@@ -486,8 +606,12 @@ export default function App() {
               <div
                 className={`mb-6 p-3 rounded-lg border text-sm ${
                   toast.kind === "error"
-                    ? "bg-red-900/30 border-red-600/40 text-red-200"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-200"
+                    ? isDark
+                      ? "bg-red-900/30 border-red-600/40 text-red-200"
+                      : "bg-red-50 border-red-200 text-red-700"
+                    : isDark
+                      ? "bg-zinc-800 border-zinc-700 text-zinc-200"
+                      : "bg-amber-50 border-amber-200 text-amber-800"
                 }`}
               >
                 {toast.text}
@@ -527,6 +651,7 @@ export default function App() {
         <PlayerFooter
           segmentCount={project.segments.length}
           validCount={validCount}
+          cachedCount={cachedCount}
           isPlayingAll={isPlayingAll}
           currentIndex={currentIndex}
           isExporting={isExporting}
@@ -534,6 +659,7 @@ export default function App() {
           onPlayAll={handlePlayAll}
           onStopAll={handleStopAll}
           onExportAudio={handleExportAudio}
+          onHeightChange={setPlayerFooterH}
         />
       </main>
     </div>

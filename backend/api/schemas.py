@@ -27,6 +27,9 @@ class ConfigResponse(BaseModel):
     voices_dir: str
     uploads_dir: str
     streaming: Literal["planned", "available", "unavailable"] = "planned"
+    # Active TTS engine and the full list of available engines.
+    active_engine: str | None = None
+    engines: list["EngineInfoModel"] = []
 
 
 # ---- voices ----
@@ -40,6 +43,9 @@ class VoiceInfoModel(BaseModel):
     size_bytes: int | None = None
     duration_sec: float | None = None
     sample_rate: int | None = None
+    # Which TTS engine owns this voice. Optional for backward compat with
+    # older clients that don't know about engines.
+    engine: str | None = None
 
 
 class VoiceMetaUpdate(BaseModel):
@@ -66,6 +72,25 @@ class ErrorResponse(BaseModel):
     code: str | None = None
 
 
+# ---- engines ----
+
+class EngineInfoModel(BaseModel):
+    name: str
+    display_name: str
+    description: str = ""
+    loaded: bool
+    supports_voice_cloning: bool
+    supports_streaming: bool = False
+    sample_rate: int | None = None
+    max_speakers: int
+    default_cfg_scale: float | None = None
+    active: bool = False
+
+
+# Forward-ref: ConfigResponse references EngineInfoModel.
+ConfigResponse.model_rebuild()
+
+
 # ---- synthesize ----
 
 class SynthSpeakerModel(BaseModel):
@@ -83,6 +108,21 @@ class SynthRequestBody(BaseModel):
     # Used by the UI's "regenerate" button to force a fresh take even when
     # text+voice+cfg haven't changed.
     force_regenerate: bool = False
+    # Optional TTS engine override (e.g. "kokoro"). When omitted, the
+    # server's active engine is used. Ignored if the engine name is not
+    # registered.
+    engine: str | None = None
+    # Speed multiplier. Kokoro uses this directly; VibeVoice ignores it.
+    speed: float | None = Field(default=None, ge=0.25, le=4.0)
+    # --- Chatterbox Multilingual V3 only (other engines ignore) ---
+    # Classifier-free guidance weight (0.0–1.0). Default 0.5.
+    cfg_weight: float | None = Field(default=None, ge=0.0, le=2.0)
+    # Voice expressiveness / exaggeration (0.0–2.0). Default 0.5.
+    exaggeration: float | None = Field(default=None, ge=0.0, le=2.0)
+    # BCP-47-ish short language code (e.g. "en", "fr", "ur", "zh"). When
+    # omitted, Chatterbox uses the voice's `language` metadata or the
+    # server's `chatterbox_default_language_id` setting.
+    language_id: str | None = None
 
 
 class SynthBase64Response(BaseModel):

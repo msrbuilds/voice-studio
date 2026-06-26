@@ -50,6 +50,10 @@ class DownloadSegment(BaseModel):
     # regenerating a segment invalidates the join cache. Optional for backward
     # compatibility.
     cache_hash: str | None = None
+    # --- Chatterbox Multilingual V3 only ---
+    cfg_weight: float | None = Field(default=None, ge=0.0, le=2.0)
+    exaggeration: float | None = Field(default=None, ge=0.0, le=2.0)
+    language_id: str | None = None
 
 
 class DownloadRequest(BaseModel):
@@ -186,6 +190,9 @@ def download(
                     text=seg.text,
                     speakers=[Speaker(name=seg.voice, voice_id=seg.voice)],
                     cfg_scale=seg.cfg_scale,
+                    cfg_weight=seg.cfg_weight,
+                    exaggeration=seg.exaggeration,
+                    language_id=seg.language_id,
                 )
             )
         except BackendError:
@@ -220,19 +227,6 @@ def download(
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("Failed to write join cache entry %s: %s", join_hash, exc)
-
-    return Response(
-        content=joined_wav,
-        media_type="audio/wav",
-        headers={
-            "X-Sample-Rate": str(target_sr),
-            "X-Audio-Duration-Sec": f"{total_duration:.3f}",
-            "X-Cache": "miss",
-            "X-Cache-Hash": join_hash,
-            "X-Segment-Count": str(len(body.segments)),
-            "Content-Disposition": f'attachment; filename="vibevoice-podcast-{uuid.uuid4().hex[:8]}.wav"',
-        },
-    )
 
     return Response(
         content=joined_wav,

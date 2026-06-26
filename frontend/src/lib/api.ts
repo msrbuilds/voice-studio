@@ -2,6 +2,7 @@
 
 import type {
   ConfigResponse,
+  EngineInfo,
   HealthResponse,
   SynthBase64Response,
   SynthSpeaker,
@@ -102,6 +103,35 @@ export interface VoiceMetadata {
   language?: string;
 }
 
+export interface EngineListResponse {
+  active: string;
+  engines: EngineInfo[];
+}
+
+export async function listEngines(): Promise<EngineListResponse> {
+  return jsonOrThrow<EngineListResponse>(
+    await fetch(`${API_BASE}/engines`),
+  );
+}
+
+export async function activateEngine(name: string): Promise<EngineInfo> {
+  return jsonOrThrow<EngineInfo>(
+    await fetch(`${API_BASE}/engines/activate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
+  );
+}
+
+export async function loadEngine(name: string): Promise<EngineInfo> {
+  return jsonOrThrow<EngineInfo>(
+    await fetch(`${API_BASE}/engines/${encodeURIComponent(name)}/load`, {
+      method: "POST",
+    }),
+  );
+}
+
 export async function uploadVoice(
   file: File,
   meta: VoiceMetadata = {},
@@ -165,7 +195,12 @@ export async function synthesizeWav(
   text: string,
   speakers: SynthSpeaker[],
   cfgScale?: number,
-  options: { forceRegenerate?: boolean } = {},
+  options: {
+    forceRegenerate?: boolean;
+    cfgWeight?: number | null;
+    exaggeration?: number | null;
+    languageId?: string | null;
+  } = {},
 ): Promise<{ audioData: ArrayBuffer; sampleRate: number; durationSec: number; inferenceMs: number; cacheHit: boolean; cacheHash: string | null }> {
   const res = await fetch(`${API_BASE}/synthesize`, {
     method: "POST",
@@ -174,6 +209,9 @@ export async function synthesizeWav(
       text,
       speakers,
       ...(cfgScale !== undefined ? { cfg_scale: cfgScale } : {}),
+      ...(options.cfgWeight != null ? { cfg_weight: options.cfgWeight } : {}),
+      ...(options.exaggeration != null ? { exaggeration: options.exaggeration } : {}),
+      ...(options.languageId ? { language_id: options.languageId } : {}),
       ...(options.forceRegenerate ? { force_regenerate: true } : {}),
     }),
   });
@@ -223,6 +261,9 @@ export interface DownloadSegmentPayload {
   voice: string;
   cfg_scale?: number;
   cache_hash?: string;
+  cfg_weight?: number;
+  exaggeration?: number;
+  language_id?: string;
 }
 
 export async function downloadPodcast(

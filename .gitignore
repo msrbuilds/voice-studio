@@ -66,8 +66,10 @@ backend/voices/*.ogg
 !backend/voices/.gitkeep
 
 # VibeVoice reference audio (1.5B model lives under HF cache)
-models/
+# Project-local HuggingFace model cache (VibeVoice 1.5B, Kokoro-82M, etc.)
+backend/models/
 checkpoints/
+models/
 *.safetensors
 *.bin
 *.pt
