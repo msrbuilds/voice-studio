@@ -13,6 +13,7 @@ generated audio is written by the worker to a temp WAV that this process reads.
 
 from __future__ import annotations
 
+import collections
 import json
 import logging
 import os
@@ -91,6 +92,12 @@ class ChatterboxEngine(Engine):
         self._worker_script = Path(worker_script) if worker_script else _default_worker_script()
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
+        # stderr is drained on a background thread so a chatty worker
+        # (CUDA init, warnings, tqdm) can never fill its stderr pipe buffer
+        # and deadlock against our blocking stdout reads. We keep the last
+        # N lines for diagnostics when the worker dies.
+        self._stderr_tail: collections.deque[str] = collections.deque(maxlen=200)
+        self._stderr_thread: threading.Thread | None = None
 
     # -- lifecycle
     def load(self) -> None:
@@ -117,6 +124,7 @@ class ChatterboxEngine(Engine):
             text=True,
             env=env,
         )
+        self._start_stderr_drain()
         resp = self._exchange({"op": "load", "device": device})
         if not resp.get("ok"):
             err = resp.get("error", "unknown error")
@@ -128,7 +136,7 @@ class ChatterboxEngine(Engine):
             return
         try:
             if self._proc.poll() is None:
-                self._exchange({"op": "shutdown"}, expect_reply=True)
+                self._exchange({"op": "shutdown"}, expect_reply=False)
         except Exception:  # noqa: BLE001
             pass
         self._kill()
@@ -228,18 +236,41 @@ class ChatterboxEngine(Engine):
                 return {"ok": True}
             line = self._proc.stdout.readline()
             if not line:
-                stderr = ""
-                try:
-                    if self._proc.stderr is not None:
-                        stderr = self._proc.stderr.read() or ""
-                except Exception:  # noqa: BLE001
-                    pass
+                # Worker closed stdout (crashed/exited). Let the stderr
+                # drain thread catch up so we can include the reason.
+                if self._stderr_thread is not None:
+                    self._stderr_thread.join(timeout=1.0)
+                stderr = self._recent_stderr()
                 self._kill()
                 raise RuntimeError(
                     "Chatterbox worker closed unexpectedly"
-                    + (f": {stderr.strip()}" if stderr.strip() else "")
+                    + (f": {stderr}" if stderr else "")
                 )
             return json.loads(line)
+
+    def _start_stderr_drain(self) -> None:
+        """Continuously drain the worker's stderr on a daemon thread so its
+        pipe buffer never fills and deadlocks our blocking stdout reads."""
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        self._stderr_tail.clear()
+
+        def _drain(stream, sink) -> None:
+            try:
+                for line in stream:
+                    sink.append(line.rstrip("\n"))
+            except Exception:  # noqa: BLE001
+                pass
+
+        thread = threading.Thread(
+            target=_drain, args=(proc.stderr, self._stderr_tail), daemon=True
+        )
+        thread.start()
+        self._stderr_thread = thread
+
+    def _recent_stderr(self) -> str:
+        return "\n".join(self._stderr_tail).strip()
 
     def _kill(self) -> None:
         proc, self._proc = self._proc, None

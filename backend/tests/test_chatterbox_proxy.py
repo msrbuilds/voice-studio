@@ -94,3 +94,33 @@ def test_capabilities_unchanged(tmp_path):
     assert eng.supports_voice_cloning() is True
     assert eng.supports_streaming() is False
     assert eng.available_voices() == []
+
+
+# A stub that floods stderr (256 KB) BEFORE replying to load. Without the
+# background stderr drain, the worker blocks writing stderr while the parent
+# blocks on stdout.readline() — a classic pipe deadlock. With the drain, load()
+# completes promptly. (If this regresses, the test hangs rather than fails.)
+_CHATTY_WORKER = textwrap.dedent('''
+    import json, sys
+    def reply(o): sys.stdout.write(json.dumps(o)+"\\n"); sys.stdout.flush()
+    for line in sys.stdin:
+        line = line.strip()
+        if not line: continue
+        req = json.loads(line)
+        if req.get("op") == "load":
+            sys.stderr.write("x" * 262144 + "\\n"); sys.stderr.flush()
+            reply({"ok": True})
+        elif req.get("op") == "shutdown":
+            reply({"ok": True}); break
+        else:
+            reply({"ok": False, "error": "bad op"})
+''')
+
+
+def test_load_survives_chatty_stderr(tmp_path):
+    stub = tmp_path / "chatty_worker.py"
+    stub.write_text(_CHATTY_WORKER, encoding="utf-8")
+    eng = ChatterboxEngine(worker_python=Path(sys.executable), worker_script=stub)
+    eng.load()  # must not deadlock despite 256 KB of stderr before the reply
+    assert eng.is_loaded() is True
+    eng.unload()
