@@ -74,6 +74,12 @@ Open <http://localhost:5173> (dev) or <http://localhost:8880> (prod). Flags afte
 
 > `studio.py` is the recommended path and only uses the Python standard library. If you'd rather wire things up by hand, the manual steps below do exactly the same thing.
 
+> **Chatterbox installs separately.** The Chatterbox engine requires a different
+> (newer) `transformers` version than VibeVoice, so it runs in its own isolated
+> environment (`backend/venv-chatterbox`) as a subprocess. Pick **Chatterbox** in
+> `python studio.py setup` (or run `python studio.py models` later) and it's built
+> automatically — VibeVoice and Kokoro are unaffected.
+
 ### Manual setup & running (alternative)
 
 Prefer two terminals and explicit control? Set up and run each side yourself.
