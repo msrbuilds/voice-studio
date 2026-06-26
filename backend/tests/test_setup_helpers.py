@@ -44,3 +44,25 @@ def test_torch_index_url():
 def test_detect_cuda_tag_with_injected_runner():
     assert envdetect.detect_cuda_tag(runner=lambda: _SAMPLE_SMI) == "cu124"
     assert envdetect.detect_cuda_tag(runner=lambda: None) is None
+
+
+from backend.scripts import download_models as dm  # noqa: E402
+
+
+def test_parse_model_selection_basic():
+    assert dm.parse_model_selection("kokoro,chatterbox") == ["kokoro", "chatterbox"]
+
+
+def test_parse_model_selection_dedupes_and_lowercases():
+    assert dm.parse_model_selection("Kokoro, kokoro , VIBEVOICE") == ["kokoro", "vibevoice"]
+
+
+def test_parse_model_selection_rejects_unknown():
+    import pytest
+    with pytest.raises(ValueError):
+        dm.parse_model_selection("kokoro,bogus")
+
+
+def test_catalog_has_expected_engines():
+    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox"}
+    assert dm.MODEL_CATALOG["kokoro"]["repo_id"] == "hexgrad/Kokoro-82M"
