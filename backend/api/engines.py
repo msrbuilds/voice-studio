@@ -21,6 +21,7 @@ class EngineInfoModel(BaseModel):
     display_name: str
     description: str
     loaded: bool
+    installed: bool
     supports_voice_cloning: bool
     sample_rate: int | None
     max_speakers: int
@@ -49,6 +50,7 @@ def _to_model(info: dict) -> EngineInfoModel:
         display_name=info["display_name"],
         description=info["description"],
         loaded=info["loaded"],
+        installed=info.get("installed", True),
         supports_voice_cloning=info["supports_voice_cloning"],
         sample_rate=info.get("sample_rate"),
         max_speakers=info["max_speakers"],

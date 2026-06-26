@@ -124,3 +124,15 @@ def test_load_survives_chatty_stderr(tmp_path):
     eng.load()  # must not deadlock despite 256 KB of stderr before the reply
     assert eng.is_loaded() is True
     eng.unload()
+
+
+def test_installed_flag_reflects_worker_python(tmp_path):
+    present = tmp_path / "py.exe"
+    present.write_text("", encoding="utf-8")
+    eng_yes = ChatterboxEngine(worker_python=present, worker_script=tmp_path / "w.py")
+    assert eng_yes.installed() is True
+    assert eng_yes.info()["installed"] is True
+
+    eng_no = ChatterboxEngine(worker_python=tmp_path / "nope.exe", worker_script=tmp_path / "w.py")
+    assert eng_no.installed() is False
+    assert eng_no.info()["installed"] is False

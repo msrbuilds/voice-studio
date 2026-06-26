@@ -118,6 +118,12 @@ class Engine(abc.ABC):
         """
         return False
 
+    def installed(self) -> bool:
+        """True if the engine's runtime is present and usable. Engines that
+        live in the main venv are always installed; engines that need a
+        separate environment (Chatterbox) override this."""
+        return True
+
     def stream_synthesize(
         self, req: EngineSynthRequest
     ) -> Iterator[EngineResult]:
@@ -168,6 +174,7 @@ class Engine(abc.ABC):
             "display_name": self.display_name,
             "description": self.description,
             "loaded": self.is_loaded(),
+            "installed": self.installed(),
             "supports_voice_cloning": self.supports_voice_cloning(),
             "supports_streaming": self.supports_streaming(),
             "sample_rate": self.sample_rate() if self.is_loaded() else None,

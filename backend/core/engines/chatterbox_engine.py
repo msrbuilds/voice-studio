@@ -144,6 +144,9 @@ class ChatterboxEngine(Engine):
     def is_loaded(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
+    def installed(self) -> bool:
+        return self._worker_python.is_file()
+
     def engine_info(self) -> dict[str, Any]:
         device = self._device_request
         if device == "auto":
