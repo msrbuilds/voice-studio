@@ -79,6 +79,10 @@ Open <http://localhost:5173> (dev) or <http://localhost:8880> (prod). Flags afte
 > environment (`backend/venv-chatterbox`) as a subprocess. Pick **Chatterbox** in
 > `python studio.py setup` (or run `python studio.py models` later) and it's built
 > automatically — VibeVoice and Kokoro are unaffected.
+>
+> You can also install it later **from the app** — open the engine menu and click
+> **Install Chatterbox**; a dialog streams the build log and, when it finishes, you can
+> switch to Chatterbox right away.
 
 ### Manual setup & running (alternative)
 
