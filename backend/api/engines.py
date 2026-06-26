@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..core.engine_manager import EngineLoadError, EngineManager, EngineNotFound
-from .deps import get_engine_manager
+from .deps import get_chatterbox_installer, get_engine_manager
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +31,12 @@ class EngineInfoModel(BaseModel):
 class EnginesListResponse(BaseModel):
     active: str
     engines: list[EngineInfoModel]
+
+
+class InstallStatusModel(BaseModel):
+    state: str
+    log: list[str]
+    returncode: int | None
 
 
 class ActivateRequest(BaseModel):
@@ -102,3 +108,19 @@ def load_engine(
         )
     info = {**engine.info(), "name": engine.name, "active": engine.name == em.active_name}
     return _to_model(info)
+
+
+@router.get("/{name}/install", response_model=InstallStatusModel)
+def install_status(name: str, installer=Depends(get_chatterbox_installer)) -> InstallStatusModel:
+    """Current install state for an installable engine (Chatterbox only)."""
+    if name != "chatterbox":
+        raise HTTPException(status_code=400, detail=f"{name} is not installable")
+    return InstallStatusModel(**installer.status())
+
+
+@router.post("/{name}/install", response_model=InstallStatusModel)
+def start_install(name: str, installer=Depends(get_chatterbox_installer)) -> InstallStatusModel:
+    """Start (or coalesce onto a running) install of the isolated Chatterbox env."""
+    if name != "chatterbox":
+        raise HTTPException(status_code=400, detail=f"{name} is not installable")
+    return InstallStatusModel(**installer.start())

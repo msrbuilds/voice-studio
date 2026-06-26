@@ -20,6 +20,10 @@ def get_engine_manager(request: Request) -> EngineManager:
     return request.app.state.engine_manager  # type: ignore[no-any-return]
 
 
+def get_chatterbox_installer(request: Request):
+    return request.app.state.chatterbox_installer  # type: ignore[no-any-return]
+
+
 def get_voice_registry(request: Request) -> VoiceRegistry:
     return request.app.state.voice_registry  # type: ignore[no-any-return]
 

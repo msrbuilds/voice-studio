@@ -61,3 +61,31 @@ def test_start_is_idempotent_while_running():
     _wait(inst)
     assert started["n"] == 1
     assert inst.status()["state"] == "installed"
+
+
+def _make_client(installer):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.api.engines import router
+    app = FastAPI()
+    app.include_router(router)
+    app.state.chatterbox_installer = installer
+    return TestClient(app)
+
+
+def test_install_endpoint_rejects_non_chatterbox():
+    client = _make_client(ChatterboxInstaller(runner=_fake_runner([], 0)))
+    assert client.get("/api/engines/kokoro/install").status_code == 400
+    assert client.post("/api/engines/kokoro/install").status_code == 400
+
+
+def test_install_endpoint_status_and_start():
+    inst = ChatterboxInstaller(runner=_fake_runner(["hello"], 0))
+    client = _make_client(inst)
+    assert client.get("/api/engines/chatterbox/install").json()["state"] == "not_installed"
+    r = client.post("/api/engines/chatterbox/install")
+    assert r.status_code == 200
+    _wait(inst)
+    s = client.get("/api/engines/chatterbox/install").json()
+    assert s["state"] == "installed"
+    assert "hello" in s["log"]
