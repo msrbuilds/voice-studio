@@ -127,3 +127,20 @@ def test_speed_and_eta_from_injected_clock():
     assert s["percent"] == 50.0
     assert s["speed_bps"] == 200.0           # (400-200)/(11-10)
     assert s["eta_sec"] == 2.0               # remaining 400 / 200 bps
+
+
+def test_speed_window_includes_start_anchor():
+    # start() seeds an anchor sample (t_start, 0). Mirror that here, then
+    # report bytes, so the speed/ETA window is computed across the anchor —
+    # the path a real download takes — without spawning a thread.
+    seq = iter([0.0, 1.0, 2.0])
+    dl = ModelDownloader(runner=lambda r, p: None, clock=lambda: next(seq))
+    dl._samples.append((dl._clock(), 0))  # anchor at t=0, as start() does
+    prog = Progress(dl)
+    prog.set_total(800)
+    prog.add_bytes(200, "f")  # t=1, total dl=200
+    prog.add_bytes(200, "f")  # t=2, total dl=400
+    s = dl.status()
+    assert s["downloaded_bytes"] == 400
+    assert s["speed_bps"] == 200.0   # (400-0)/(2-0), window spans the anchor
+    assert s["eta_sec"] == 2.0       # remaining 400 / 200 bps
