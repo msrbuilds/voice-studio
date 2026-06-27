@@ -146,6 +146,11 @@ class KokoroEngine(Engine):
             return False
         return bool(self._pipelines)
 
+    def downloaded(self) -> bool:
+        from ..model_cache import model_downloaded
+
+        return model_downloaded(self._model_id)
+
     def engine_info(self) -> dict[str, Any]:
         """Surface Kokoro's pipeline info to /api/config.
 

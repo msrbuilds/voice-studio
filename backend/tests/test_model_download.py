@@ -23,3 +23,35 @@ def test_model_downloaded_false_when_snapshot_raises(monkeypatch):
         raise RuntimeError("not cached")
     monkeypatch.setattr(huggingface_hub, "snapshot_download", _boom)
     assert model_cache.model_downloaded("org/repo") is False
+
+
+from backend.core.engines import Engine, EngineResult, EngineSynthRequest  # noqa: E402
+
+
+class _StubEngine(Engine):
+    """Minimal concrete Engine for exercising base-class behavior."""
+
+    name = "stub"
+
+    def __init__(self, downloaded=True):
+        self._downloaded = downloaded
+
+    def load(self): ...
+    def unload(self): ...
+    def is_loaded(self): return False
+    def synthesize(self, req): raise NotImplementedError
+    def sample_rate(self): return 24000
+    def max_speakers(self): return 1
+    def supports_voice_cloning(self): return False
+    def default_cfg_scale(self): return None
+    def available_voices(self): return []
+    def downloaded(self): return self._downloaded
+
+
+def test_engine_info_includes_downloaded_default_true():
+    info = _StubEngine().info()
+    assert info["downloaded"] is True
+
+
+def test_engine_info_reflects_overridden_downloaded():
+    assert _StubEngine(downloaded=False).info()["downloaded"] is False

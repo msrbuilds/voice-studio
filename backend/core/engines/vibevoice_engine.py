@@ -108,6 +108,11 @@ class VibeVoiceEngine(Engine):
     def is_loaded(self) -> bool:
         return self._model_manager.is_loaded
 
+    def downloaded(self) -> bool:
+        from ..model_cache import model_downloaded
+
+        return model_downloaded(self._model_manager.model_id)
+
     def engine_info(self) -> dict[str, Any]:
         """Surface VibeVoice's ModelManager fields to /api/config."""
         mm = self._model_manager

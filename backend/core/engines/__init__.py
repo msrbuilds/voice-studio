@@ -124,6 +124,16 @@ class Engine(abc.ABC):
         separate environment (Chatterbox) override this."""
         return True
 
+    def downloaded(self) -> bool:
+        """True if the engine's model weights are present in the local cache.
+
+        Engines that fetch large weights lazily (VibeVoice, Kokoro) override
+        this so the UI can offer a download-with-progress flow before the
+        first load. Default True: engines without a separate weight download
+        (or that manage it elsewhere, like Chatterbox) never trigger that UI.
+        """
+        return True
+
     def stream_synthesize(
         self, req: EngineSynthRequest
     ) -> Iterator[EngineResult]:
@@ -175,6 +185,7 @@ class Engine(abc.ABC):
             "description": self.description,
             "loaded": self.is_loaded(),
             "installed": self.installed(),
+            "downloaded": self.downloaded(),
             "supports_voice_cloning": self.supports_voice_cloning(),
             "supports_streaming": self.supports_streaming(),
             "sample_rate": self.sample_rate() if self.is_loaded() else None,
