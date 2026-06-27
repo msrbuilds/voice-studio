@@ -187,16 +187,18 @@ class SynthService:
                 f"{target_engine.max_speakers()} speaker(s) per request "
                 f"(got {len(req.speakers)})"
             )
-        # Resolve reference audio (voice cloning engines) + voice language.
+        # Resolve reference audio (clone mode only) + voice language. OmniVoice
+        # design/auto carry no reference voice, so skip the lookup that would
+        # otherwise raise VoiceNotFound for an empty voice id.
         reference_audio: str | None = None
         voice_language: str | None = None
         for sp in req.speakers:
-            try:
-                if target_engine.supports_voice_cloning():
-                    reference_audio = str(self._voices.get(sp.voice_id))
-                voice_language = voice_language or self._voices.get_language(sp.voice_id)
-            except VoiceNotFound:
-                raise
+            sp_mode = sp.voice_mode or ("clone" if sp.voice_id else "auto")
+            if sp_mode != "clone":
+                continue
+            if target_engine.supports_voice_cloning():
+                reference_audio = str(self._voices.get(sp.voice_id))
+            voice_language = voice_language or self._voices.get_language(sp.voice_id)
 
         cfg = req.cfg_scale if req.cfg_scale is not None else self.default_cfg_scale
         steps_override = req.inference_steps
@@ -238,8 +240,9 @@ class SynthService:
         # invalidates the cache entry.
         content_hash: str | None = None
         if self._cache is not None and self._cache.enabled:
-            cache_voice_key = (
-                Path(reference_audio).name if reference_audio else req.speakers[0].voice_id
+            sp0 = req.speakers[0]
+            cache_voice_key = _voice_cache_key(
+                sp0.voice_id, sp0.voice_mode, sp0.instruct, reference_audio
             )
             # Fold the optional knobs into the voice field with a stable
             # delimiter so different knob combos don't share a cache slot.
@@ -254,7 +257,7 @@ class SynthService:
                 text=req.text,
                 voice=cache_voice_key + extra,
                 cfg_scale=cfg,
-                voice_samples=[reference_audio or req.speakers[0].voice_id],
+                voice_samples=[reference_audio or cache_voice_key],
             )
             hit = self._cache.get(content_hash)
             if hit is not None and not req.force_regenerate:
@@ -281,15 +284,17 @@ class SynthService:
 
         # Single-speaker fast path.
         if len(speaker_chunks) <= 1 and len(req.speakers) <= 1:
-            voice_id = req.speakers[0].voice_id
+            sp0 = req.speakers[0]
             engine_req = EngineSynthRequest(
                 text=speaker_chunks[0] if speaker_chunks else text,
-                voice_id=voice_id,
+                voice_id=sp0.voice_id,
                 speed=req.speed,
                 cfg_scale=cfg,
                 reference_audio=reference_audio,
                 inference_steps=steps_override,
                 disable_prefill=req.disable_prefill,
+                voice_mode=sp0.voice_mode,
+                instruct=sp0.instruct,
             )
             return self._synth_one(
                 engine=target_engine,
@@ -449,6 +454,27 @@ def _build_script(text: str) -> str:
             non_empty = [text.strip()]
         return "\n".join(f"Speaker 1: {ln}" for ln in non_empty)
     return _normalize_speaker_tags(text)
+
+
+def _voice_cache_key(voice_id: str, voice_mode: str | None, instruct: str | None,
+                     reference_audio: str | None) -> str:
+    """Cache-key 'voice' component, folding OmniVoice mode/instruct.
+
+    For other engines (voice_mode None) this returns exactly what the old
+    inline logic did, so their cache entries don't churn. For OmniVoice it
+    keeps clone/design/auto and distinct design prompts in separate slots.
+    """
+    if reference_audio:
+        base = Path(reference_audio).name
+    elif voice_mode in ("design", "auto"):
+        base = f"{voice_mode}:{instruct or ''}"
+    else:
+        base = voice_id
+    if voice_mode:
+        base += f"|vm={voice_mode}"
+        if instruct:
+            base += f"|in={instruct}"
+    return base
 
 
 def _split_script_by_speaker(script: str) -> list[str]:
