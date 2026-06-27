@@ -31,7 +31,12 @@ def cuda_version_to_tag(version: str | None) -> str | None:
         major, minor = (int(p) for p in version.split(".")[:2])
     except ValueError:
         return None
-    if major >= 12:
+    # cu124 is the newest wheel build we ship. Drivers reporting CUDA 12.4+
+    # (including 13.x — modern drivers report e.g. "CUDA Version: 13.2") run
+    # cu124 wheels natively; only 12.0–12.3 lack the 12.4 runtime → cu121.
+    if major >= 13:
+        return "cu124"
+    if major == 12:
         return "cu124" if minor >= 4 else "cu121"
     if major == 11:
         return "cu118"

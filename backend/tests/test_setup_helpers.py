@@ -29,6 +29,9 @@ def test_cuda_version_to_tag():
     assert envdetect.cuda_version_to_tag("12.1") == "cu121"
     assert envdetect.cuda_version_to_tag("12.0") == "cu121"
     assert envdetect.cuda_version_to_tag("11.8") == "cu118"
+    # Modern drivers report CUDA 13.x; they run cu124 wheels natively.
+    assert envdetect.cuda_version_to_tag("13.2") == "cu124"
+    assert envdetect.cuda_version_to_tag("13.0") == "cu124"
     assert envdetect.cuda_version_to_tag("10.2") is None
     assert envdetect.cuda_version_to_tag(None) is None
 
