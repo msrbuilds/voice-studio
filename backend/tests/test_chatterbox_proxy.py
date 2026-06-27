@@ -126,13 +126,20 @@ def test_load_survives_chatty_stderr(tmp_path):
     eng.unload()
 
 
-def test_installed_flag_reflects_worker_python(tmp_path):
-    present = tmp_path / "py.exe"
-    present.write_text("", encoding="utf-8")
-    eng_yes = ChatterboxEngine(worker_python=present, worker_script=tmp_path / "w.py")
-    assert eng_yes.installed() is True
-    assert eng_yes.info()["installed"] is True
+def test_installed_flag_requires_ready_marker(tmp_path):
+    # Simulate a half-built venv: python.exe exists (created by `python -m venv`)
+    # but the install never finished, so no .chatterbox-ready marker.
+    venv = tmp_path / "venv-chatterbox"
+    (venv / "Scripts").mkdir(parents=True)
+    py = venv / "Scripts" / "python.exe"
+    py.write_text("", encoding="utf-8")
+    eng = ChatterboxEngine(worker_python=py, worker_script=tmp_path / "w.py")
 
-    eng_no = ChatterboxEngine(worker_python=tmp_path / "nope.exe", worker_script=tmp_path / "w.py")
-    assert eng_no.installed() is False
-    assert eng_no.info()["installed"] is False
+    # Python present but NO marker → NOT installed (this is the bug we fixed).
+    assert eng.installed() is False
+    assert eng.info()["installed"] is False
+
+    # Marker written by a successful install → installed.
+    (venv / ".chatterbox-ready").write_text("ok", encoding="utf-8")
+    assert eng.installed() is True
+    assert eng.info()["installed"] is True

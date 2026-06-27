@@ -50,6 +50,16 @@ def chatterbox_venv_python(repo_root: Path) -> Path:
     return venv / "bin" / "python"
 
 
+def chatterbox_ready_marker(repo_root: Path) -> Path:
+    """Sentinel written only after a FULL successful Chatterbox install.
+
+    The venv's Python exists after `python -m venv` (step 1), long before the
+    packages are installed, so its mere presence can't mean "installed". This
+    marker is created last, so an interrupted install never looks complete.
+    """
+    return repo_root / "backend" / "venv-chatterbox" / ".chatterbox-ready"
+
+
 def _ensure_chatterbox_env() -> bool:
     """Create backend/venv-chatterbox and install chatterbox-tts into it.
 
@@ -57,6 +67,13 @@ def _ensure_chatterbox_env() -> bool:
     gets its own environment with a CUDA-matched torch + chatterbox-tts.
     Returns True on success, False on any failure.
     """
+    # Clear any stale "ready" marker up front so a half-finished re-install
+    # never reports as complete; it's re-created only on full success below.
+    marker = chatterbox_ready_marker(REPO_ROOT)
+    try:
+        marker.unlink()
+    except OSError:
+        pass
     cpy = chatterbox_venv_python(REPO_ROOT)
     if not cpy.is_file():
         print("  Creating isolated Chatterbox environment (backend/venv-chatterbox) …")
@@ -77,6 +94,13 @@ def _ensure_chatterbox_env() -> bool:
     if _run([str(cpy), "-m", "pip", "install", "-r",
              str(BACKEND_DIR / "requirements-chatterbox.txt")]) != 0:
         print("  ERROR: chatterbox-tts install failed.")
+        return False
+    # Mark the install complete (written last, after both pip steps succeed).
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("ok\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"  ERROR: could not write ready marker: {exc}")
         return False
     print("  Chatterbox environment ready.")
     return True

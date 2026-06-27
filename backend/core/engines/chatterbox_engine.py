@@ -145,7 +145,16 @@ class ChatterboxEngine(Engine):
         return self._proc is not None and self._proc.poll() is None
 
     def installed(self) -> bool:
-        return self._worker_python.is_file()
+        # The venv's Python exists right after `python -m venv`, before any
+        # package is installed, so checking for it would report a half-built
+        # (interrupted) install as complete. Gate on the ready marker that
+        # studio.py writes only after the full install succeeds.
+        return self._ready_marker().is_file()
+
+    def _ready_marker(self) -> Path:
+        # backend/venv-chatterbox/.chatterbox-ready (worker_python is
+        # venv-chatterbox/{Scripts|bin}/python[.exe]).
+        return self._worker_python.parent.parent / ".chatterbox-ready"
 
     def engine_info(self) -> dict[str, Any]:
         device = self._device_request
