@@ -148,3 +148,13 @@ def test_install_chatterbox_subcommand_success(monkeypatch):
 def test_install_chatterbox_subcommand_failure(monkeypatch):
     monkeypatch.setattr(studio, "_ensure_chatterbox_env", lambda: False)
     assert studio.main(["install-chatterbox"]) == 1
+
+
+def test_chatterbox_torch_tag_maps_driver_to_compatible_build():
+    # cu121 lacks modern torch builds and cu124 needs a 12.4 driver, so a
+    # cu121/cu118 driver must fall back to cu118 (CUDA 11.8 runs everywhere).
+    assert studio._chatterbox_torch_tag("cu124") == "cu124"
+    assert studio._chatterbox_torch_tag("cu121") == "cu118"
+    assert studio._chatterbox_torch_tag("cu118") == "cu118"
+    assert studio._chatterbox_torch_tag(None) is None
+    assert studio._chatterbox_torch_tag("cpu") is None

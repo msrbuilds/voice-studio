@@ -60,6 +60,38 @@ def chatterbox_ready_marker(repo_root: Path) -> Path:
     return repo_root / "backend" / "venv-chatterbox" / ".chatterbox-ready"
 
 
+def _chatterbox_torch_tag(detected_tag: str | None) -> str | None:
+    """Pick a CUDA wheel build for Chatterbox's pinned torch.
+
+    chatterbox-tts pins torch>=2.6.0, which the cu121 index does NOT publish,
+    and cu124 wheels need a CUDA 12.4 driver. Map the detected driver to a
+    build that both hosts modern torch AND runs on that driver:
+      - cu124 driver -> cu124
+      - cu121 / cu118 driver -> cu118 (CUDA 11.8 runs on every 12.x driver)
+      - cpu / mps / unknown -> None (leave the CPU wheel in place)
+    """
+    if detected_tag == "cu124":
+        return "cu124"
+    if detected_tag in ("cu121", "cu118"):
+        return "cu118"
+    return None
+
+
+def _pip_pkg_version(py: Path, pkg: str) -> str | None:
+    """Public version of an installed package (local '+cuXXX/+cpu' stripped)."""
+    try:
+        out = subprocess.run(
+            [str(py), "-m", "pip", "show", pkg],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.stdout.splitlines():
+        if line.lower().startswith("version:"):
+            return line.split(":", 1)[1].strip().split("+", 1)[0]
+    return None
+
+
 def _ensure_chatterbox_env() -> bool:
     """Create backend/venv-chatterbox and install chatterbox-tts into it.
 
@@ -87,21 +119,31 @@ def _ensure_chatterbox_env() -> bool:
     print("  Upgrading pip in the Chatterbox env …")
     raw_ok = _run([str(cpy), "-m", "pip", "install", "--upgrade", "pip"]) == 0
     progress = ["--progress-bar", "raw"] if raw_ok else []
-    # CUDA-matched torch first (same detection as the main setup).
-    tag = envdetect.detect_cuda_tag()
-    index = envdetect.torch_index_url(tag)
-    pip_torch = [str(cpy), "-m", "pip", "install", *progress, "torch", "torchaudio"]
-    if index:
-        pip_torch += ["--index-url", index]
-    print("  Installing PyTorch into the Chatterbox env …")
-    if _run(pip_torch) != 0:
-        print("  ERROR: torch install into venv-chatterbox failed.")
-        return False
+    # 1. Install chatterbox-tts FIRST. It hard-pins an exact torch version and
+    #    would otherwise overwrite a pre-installed CUDA torch with a CPU build
+    #    from PyPI (the bug that left the engine running on CPU).
     print("  Installing chatterbox-tts into the Chatterbox env …")
     if _run([str(cpy), "-m", "pip", "install", *progress, "-r",
              str(BACKEND_DIR / "requirements-chatterbox.txt")]) != 0:
         print("  ERROR: chatterbox-tts install failed.")
         return False
+    # 2. Swap the CPU torch for the CUDA build of the SAME version so the model
+    #    runs on GPU. The CPU wheel is already installed, so deps are satisfied;
+    #    --no-deps avoids re-resolving them from the wheel-only CUDA index.
+    cb_tag = _chatterbox_torch_tag(envdetect.detect_cuda_tag())
+    index = envdetect.torch_index_url(cb_tag) if cb_tag else None
+    if index:
+        tv = _pip_pkg_version(cpy, "torch")
+        av = _pip_pkg_version(cpy, "torchaudio")
+        if tv:
+            specs = [f"torch=={tv}+{cb_tag}"]
+            if av:
+                specs.append(f"torchaudio=={av}+{cb_tag}")
+            print(f"  Installing the CUDA build of torch {tv} ({cb_tag}) for GPU …")
+            if _run([str(cpy), "-m", "pip", "install", *progress, "--force-reinstall",
+                     "--no-deps", "--index-url", index, *specs]) != 0:
+                print("  ERROR: CUDA torch install failed.")
+                return False
     # Mark the install complete (written last, after both pip steps succeed).
     try:
         marker.parent.mkdir(parents=True, exist_ok=True)
