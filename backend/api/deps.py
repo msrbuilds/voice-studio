@@ -24,6 +24,10 @@ def get_chatterbox_installer(request: Request):
     return request.app.state.chatterbox_installer  # type: ignore[no-any-return]
 
 
+def get_model_downloader(request: Request):
+    return request.app.state.model_downloader  # type: ignore[no-any-return]
+
+
 def get_voice_registry(request: Request) -> VoiceRegistry:
     return request.app.state.voice_registry  # type: ignore[no-any-return]
 

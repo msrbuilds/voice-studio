@@ -164,3 +164,39 @@ def test_progress_tqdm_counts_only_byte_unit_bars():
     item_bar = cls(total=5, unit="it", file=io.StringIO())  # "Fetching N files" bar
     item_bar.update(3)
     assert dl.status()["downloaded_bytes"] == 40  # unchanged — item bar ignored
+
+
+def _make_client(downloader):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.api.engines import router
+    from backend.api.deps import get_model_downloader
+
+    app = FastAPI()
+    app.include_router(router)
+    app.state.model_downloader = downloader
+    app.dependency_overrides[get_model_downloader] = lambda: downloader
+    return TestClient(app)
+
+
+def test_download_endpoint_rejects_non_downloadable():
+    client = _make_client(ModelDownloader(runner=lambda r, p: None))
+    assert client.get("/api/engines/chatterbox/download").status_code == 400
+    assert client.post("/api/engines/chatterbox/download").status_code == 400
+
+
+def test_download_endpoint_start_and_status():
+    def runner(repo_id, prog):
+        prog.set_total(10)
+        prog.add_bytes(10, "f")
+    dl = ModelDownloader(runner=runner)
+    client = _make_client(dl)
+
+    assert client.get("/api/engines/vibevoice/download").json()["state"] == "idle"
+    r = client.post("/api/engines/vibevoice/download")
+    assert r.status_code == 200
+    _wait(dl)
+    s = client.get("/api/engines/vibevoice/download").json()
+    assert s["state"] == "done"
+    assert s["downloaded_bytes"] == 10
+    assert s["percent"] == 100.0

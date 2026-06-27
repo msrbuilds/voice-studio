@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..core.engine_manager import EngineLoadError, EngineManager, EngineNotFound
-from .deps import get_chatterbox_installer, get_engine_manager
+from .deps import get_chatterbox_installer, get_engine_manager, get_model_downloader
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class EngineInfoModel(BaseModel):
     description: str
     loaded: bool
     installed: bool
+    downloaded: bool
     supports_voice_cloning: bool
     sample_rate: int | None
     max_speakers: int
@@ -40,6 +41,23 @@ class InstallStatusModel(BaseModel):
     returncode: int | None
 
 
+class DownloadStatusModel(BaseModel):
+    engine: str | None
+    state: str
+    percent: float | None
+    downloaded_bytes: int
+    total_bytes: int | None
+    speed_bps: float | None
+    eta_sec: float | None
+    current_file: str | None
+    log: list[str]
+    error: str | None
+    returncode: int | None
+
+
+_DOWNLOADABLE = {"vibevoice", "kokoro"}
+
+
 class ActivateRequest(BaseModel):
     name: str = Field(..., min_length=1, description="Engine id to activate")
 
@@ -51,6 +69,7 @@ def _to_model(info: dict) -> EngineInfoModel:
         description=info["description"],
         loaded=info["loaded"],
         installed=info.get("installed", True),
+        downloaded=info.get("downloaded", True),
         supports_voice_cloning=info["supports_voice_cloning"],
         sample_rate=info.get("sample_rate"),
         max_speakers=info["max_speakers"],
@@ -126,3 +145,22 @@ def start_install(name: str, installer=Depends(get_chatterbox_installer)) -> Ins
     if name != "chatterbox":
         raise HTTPException(status_code=400, detail=f"{name} is not installable")
     return InstallStatusModel(**installer.start())
+
+
+@router.get("/{name}/download", response_model=DownloadStatusModel)
+def download_status(name: str, downloader=Depends(get_model_downloader)) -> DownloadStatusModel:
+    """Current weight-download state for an in-process engine."""
+    if name not in _DOWNLOADABLE:
+        raise HTTPException(status_code=400, detail=f"{name} is not downloadable")
+    return DownloadStatusModel(**downloader.status())
+
+
+@router.post("/{name}/download", response_model=DownloadStatusModel)
+def start_download(name: str, downloader=Depends(get_model_downloader)) -> DownloadStatusModel:
+    """Start (or coalesce onto a running) weight download for the engine."""
+    if name not in _DOWNLOADABLE:
+        raise HTTPException(status_code=400, detail=f"{name} is not downloadable")
+    try:
+        return DownloadStatusModel(**downloader.start(name))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

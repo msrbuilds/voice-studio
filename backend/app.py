@@ -38,6 +38,7 @@ from .config import Settings, get_settings
 from .core.engine_manager import EngineManager
 from .core.exceptions import BackendError
 from .services.chatterbox_install import ChatterboxInstaller
+from .services.model_download import ModelDownloader
 from .services.join_cache import JoinCache
 from .services.synth_cache import SynthCache
 from .services.synthesize import SynthService
@@ -171,6 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.join_cache = join_cache
     app.state.synth_service = synth_service
     app.state.chatterbox_installer = ChatterboxInstaller()
+    app.state.model_downloader = ModelDownloader()
 
     # ---- routers
     app.include_router(health_router)
