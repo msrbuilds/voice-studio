@@ -119,11 +119,14 @@ def _ensure_chatterbox_env() -> bool:
     print("  Upgrading pip in the Chatterbox env …")
     raw_ok = _run([str(cpy), "-m", "pip", "install", "--upgrade", "pip"]) == 0
     progress = ["--progress-bar", "raw"] if raw_ok else []
+    # Multi-GB torch wheels download from a CDN that can stall; give pip a
+    # longer per-read timeout and more retries so a slow link doesn't fail.
+    net = ["--retries", "10", "--timeout", "120"]
     # 1. Install chatterbox-tts FIRST. It hard-pins an exact torch version and
     #    would otherwise overwrite a pre-installed CUDA torch with a CPU build
     #    from PyPI (the bug that left the engine running on CPU).
     print("  Installing chatterbox-tts into the Chatterbox env …")
-    if _run([str(cpy), "-m", "pip", "install", *progress, "-r",
+    if _run([str(cpy), "-m", "pip", "install", *progress, *net, "-r",
              str(BACKEND_DIR / "requirements-chatterbox.txt")]) != 0:
         print("  ERROR: chatterbox-tts install failed.")
         return False
@@ -140,7 +143,7 @@ def _ensure_chatterbox_env() -> bool:
             if av:
                 specs.append(f"torchaudio=={av}+{cb_tag}")
             print(f"  Installing the CUDA build of torch {tv} ({cb_tag}) for GPU …")
-            if _run([str(cpy), "-m", "pip", "install", *progress, "--force-reinstall",
+            if _run([str(cpy), "-m", "pip", "install", *progress, *net, "--force-reinstall",
                      "--no-deps", "--index-url", index, *specs]) != 0:
                 print("  ERROR: CUDA torch install failed.")
                 return False
