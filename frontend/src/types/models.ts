@@ -2,6 +2,19 @@
 
 export type VoiceSource = "builtin" | "upload";
 
+export interface EngineLanguage {
+  code: string;
+  label: string;
+}
+
+export type ProjectMode = "tts" | "podcast";
+
+export interface TtsBuffer {
+  text: string;
+  voiceId: string | null;
+  language: string | null;
+}
+
 export interface Voice {
   id: string;
   name: string;
@@ -47,6 +60,7 @@ export interface EngineInfo {
   max_speakers: number;
   default_cfg_scale: number | null;
   active: boolean;
+  languages: EngineLanguage[];
 }
 
 export interface InstallStatus {
