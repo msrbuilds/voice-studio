@@ -143,3 +143,59 @@ def test_installed_flag_requires_ready_marker(tmp_path):
     (venv / ".chatterbox-ready").write_text("ok", encoding="utf-8")
     assert eng.installed() is True
     assert eng.info()["installed"] is True
+
+
+def test_concurrent_load_calls_popen_once(tmp_path, monkeypatch):
+    """Two threads calling load() simultaneously must spawn exactly one worker."""
+    import threading
+    import subprocess as _subprocess
+
+    popen_count = 0
+    count_lock = threading.Lock()
+    real_popen = _subprocess.Popen
+
+    def counting_popen(*args, **kwargs):
+        nonlocal popen_count
+        with count_lock:
+            popen_count += 1
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "backend.core.engines.chatterbox_engine.subprocess.Popen",
+        counting_popen,
+    )
+
+    eng = _make_stub_engine(tmp_path)
+    barrier = threading.Barrier(2)
+    thread_errors = []
+    errors_lock = threading.Lock()
+
+    def load_with_barrier():
+        barrier.wait()
+        try:
+            eng.load()
+        except Exception as exc:  # noqa: BLE001
+            with errors_lock:
+                thread_errors.append(exc)
+
+    threads = [threading.Thread(target=load_with_barrier) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=3.0)
+
+    assert not any(t.is_alive() for t in threads), "threads did not finish — possible deadlock"
+    assert thread_errors == [], f"threads raised: {thread_errors}"
+    assert popen_count == 1
+    assert eng.is_loaded() is True
+    eng.unload()
+
+
+def test_sequential_load_idempotent(tmp_path):
+    """A second sequential load() reuses the existing worker proc."""
+    eng = _make_stub_engine(tmp_path)
+    eng.load()
+    first_proc = eng._proc
+    eng.load()
+    assert eng._proc is first_proc
+    eng.unload()

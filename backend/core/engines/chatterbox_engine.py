@@ -92,6 +92,7 @@ class ChatterboxEngine(Engine):
         self._worker_script = Path(worker_script) if worker_script else _default_worker_script()
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
+        self._load_lock = threading.Lock()
         # stderr is drained on a background thread so a chatty worker
         # (CUDA init, warnings, tqdm) can never fill its stderr pipe buffer
         # and deadlock against our blocking stdout reads. We keep the last
@@ -101,35 +102,36 @@ class ChatterboxEngine(Engine):
 
     # -- lifecycle
     def load(self) -> None:
-        if self.is_loaded():
-            return
-        if not self._worker_python.is_file():
-            raise RuntimeError(
-                "Chatterbox isn't installed in its isolated environment. "
-                "Run `python studio.py models` and select Chatterbox."
+        with self._load_lock:
+            if self.is_loaded():
+                return
+            if not self._worker_python.is_file():
+                raise RuntimeError(
+                    "Chatterbox isn't installed in its isolated environment. "
+                    "Run `python studio.py models` and select Chatterbox."
+                )
+            device = self._device_request
+            if device == "auto":
+                device = "cuda"
+            env = dict(os.environ)
+            models_dir = _BACKEND_ROOT / "models"
+            env["HF_HOME"] = str(models_dir)
+            env["HUGGINGFACE_HUB_CACHE"] = str(models_dir / "hub")
+            log.info("Spawning Chatterbox worker: %s %s", self._worker_python, self._worker_script)
+            self._proc = subprocess.Popen(
+                [str(self._worker_python), str(self._worker_script)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
             )
-        device = self._device_request
-        if device == "auto":
-            device = "cuda"
-        env = dict(os.environ)
-        models_dir = _BACKEND_ROOT / "models"
-        env["HF_HOME"] = str(models_dir)
-        env["HUGGINGFACE_HUB_CACHE"] = str(models_dir / "hub")
-        log.info("Spawning Chatterbox worker: %s %s", self._worker_python, self._worker_script)
-        self._proc = subprocess.Popen(
-            [str(self._worker_python), str(self._worker_script)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-        self._start_stderr_drain()
-        resp = self._exchange({"op": "load", "device": device})
-        if not resp.get("ok"):
-            err = resp.get("error", "unknown error")
-            self._kill()
-            raise RuntimeError(f"Chatterbox worker failed to load: {err}")
+            self._start_stderr_drain()
+            resp = self._exchange({"op": "load", "device": device})
+            if not resp.get("ok"):
+                err = resp.get("error", "unknown error")
+                self._kill()
+                raise RuntimeError(f"Chatterbox worker failed to load: {err}")
 
     def unload(self) -> None:
         if self._proc is None:
