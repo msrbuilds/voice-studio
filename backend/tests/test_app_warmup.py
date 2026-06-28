@@ -7,9 +7,17 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-import pytest  # noqa: E402
-
 from backend.app import _start_background_warmup, _warmup_active_engine  # noqa: E402
+
+
+class _FakeEngine:
+    """Minimal engine stub used by fake EMs."""
+
+    def __init__(self, downloaded: bool = True) -> None:
+        self._downloaded = downloaded
+
+    def downloaded(self) -> bool:
+        return self._downloaded
 
 
 class _BlockingEM:
@@ -18,6 +26,7 @@ class _BlockingEM:
     def __init__(self):
         self._event = threading.Event()
         self.call_count = 0
+        self.active_engine = _FakeEngine(downloaded=True)
 
     def ensure_active_loaded(self):
         self.call_count += 1
@@ -30,6 +39,9 @@ class _BlockingEM:
 class _RaisingEM:
     """Fake EngineManager whose ensure_active_loaded always raises."""
 
+    def __init__(self):
+        self.active_engine = _FakeEngine(downloaded=True)
+
     def ensure_active_loaded(self):
         raise RuntimeError("simulated load failure")
 
@@ -37,8 +49,9 @@ class _RaisingEM:
 class _CountingEM:
     """Fake EngineManager that counts ensure_active_loaded calls."""
 
-    def __init__(self):
+    def __init__(self, downloaded: bool = True):
         self.call_count = 0
+        self.active_engine = _FakeEngine(downloaded=downloaded)
 
     def ensure_active_loaded(self):
         self.call_count += 1
@@ -67,6 +80,13 @@ def test_warmup_swallows_exception():
 
 def test_warmup_calls_ensure_active_loaded_once():
     """_warmup_active_engine calls ensure_active_loaded exactly once."""
-    em = _CountingEM()
+    em = _CountingEM(downloaded=True)
     _warmup_active_engine(em)
     assert em.call_count == 1
+
+
+def test_warmup_skips_when_not_downloaded():
+    """_warmup_active_engine skips load when the engine weights are not cached."""
+    em = _CountingEM(downloaded=False)
+    _warmup_active_engine(em)
+    assert em.call_count == 0

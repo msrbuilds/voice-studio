@@ -71,9 +71,19 @@ def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
 def _warmup_active_engine(em: EngineManager) -> None:
     """Load the active engine; swallow + log any failure.
 
-    Runs on a background thread so startup never blocks on it.
+    Skips engines whose weights aren't downloaded yet so the user sees the
+    Download button in the UI rather than a silent background download with
+    no progress. Runs on a background thread so startup never blocks on it.
     """
     try:
+        engine = em.active_engine
+        if not engine.downloaded():
+            log.info(
+                "Skipping warm-up for %r: weights not in local cache. "
+                "Use the Download button in the UI to pre-fetch them.",
+                engine.name,
+            )
+            return
         em.ensure_active_loaded()
     except Exception:  # noqa: BLE001
         log.exception("Active engine failed to warm up; first use will retry.")
