@@ -184,3 +184,48 @@ def test_downloaded_false_when_not_cached(monkeypatch):
     eng = OmniVoiceEngine(worker_python=Path("x"), worker_script=Path("y"))
     assert eng.downloaded() is False
     assert eng.info()["downloaded"] is False
+
+
+def test_concurrent_load_calls_popen_once(tmp_path, monkeypatch):
+    """Two threads calling load() simultaneously must spawn exactly one worker."""
+    import threading
+    import subprocess as _subprocess
+
+    popen_count = [0]
+    real_popen = _subprocess.Popen
+
+    def counting_popen(*args, **kwargs):
+        popen_count[0] += 1
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "backend.core.engines.omnivoice_engine.subprocess.Popen",
+        counting_popen,
+    )
+
+    eng = _make_stub_engine(tmp_path)
+    barrier = threading.Barrier(2)
+
+    def load_with_barrier():
+        barrier.wait()
+        eng.load()
+
+    threads = [threading.Thread(target=load_with_barrier) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=15.0)
+
+    assert popen_count[0] == 1
+    assert eng.is_loaded() is True
+    eng.unload()
+
+
+def test_sequential_load_idempotent(tmp_path):
+    """A second sequential load() reuses the existing worker proc."""
+    eng = _make_stub_engine(tmp_path)
+    eng.load()
+    first_proc = eng._proc
+    eng.load()
+    assert eng._proc is first_proc
+    eng.unload()

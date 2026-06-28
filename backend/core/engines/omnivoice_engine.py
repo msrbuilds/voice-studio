@@ -70,40 +70,42 @@ class OmniVoiceEngine(Engine):
         self._worker_script = Path(worker_script) if worker_script else _default_worker_script()
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
+        self._load_lock = threading.Lock()
         self._stderr_tail: collections.deque[str] = collections.deque(maxlen=200)
         self._stderr_thread: threading.Thread | None = None
 
     # -- lifecycle
     def load(self) -> None:
-        if self.is_loaded():
-            return
-        if not self._worker_python.is_file():
-            raise RuntimeError(
-                "OmniVoice isn't installed in its isolated environment. "
-                "Run `python studio.py install-omnivoice` (or click Install in the UI)."
+        with self._load_lock:
+            if self.is_loaded():
+                return
+            if not self._worker_python.is_file():
+                raise RuntimeError(
+                    "OmniVoice isn't installed in its isolated environment. "
+                    "Run `python studio.py install-omnivoice` (or click Install in the UI)."
+                )
+            device = self._device_request
+            if device == "auto":
+                device = "cuda"
+            env = dict(os.environ)
+            models_dir = _BACKEND_ROOT / "models"
+            env["HF_HOME"] = str(models_dir)
+            env["HUGGINGFACE_HUB_CACHE"] = str(models_dir / "hub")
+            log.info("Spawning OmniVoice worker: %s %s", self._worker_python, self._worker_script)
+            self._proc = subprocess.Popen(
+                [str(self._worker_python), str(self._worker_script)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
             )
-        device = self._device_request
-        if device == "auto":
-            device = "cuda"
-        env = dict(os.environ)
-        models_dir = _BACKEND_ROOT / "models"
-        env["HF_HOME"] = str(models_dir)
-        env["HUGGINGFACE_HUB_CACHE"] = str(models_dir / "hub")
-        log.info("Spawning OmniVoice worker: %s %s", self._worker_python, self._worker_script)
-        self._proc = subprocess.Popen(
-            [str(self._worker_python), str(self._worker_script)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-        self._start_stderr_drain()
-        resp = self._exchange({"op": "load", "device": device, "model_id": self._model_id})
-        if not resp.get("ok"):
-            err = resp.get("error", "unknown error")
-            self._kill()
-            raise RuntimeError(f"OmniVoice worker failed to load: {err}")
+            self._start_stderr_drain()
+            resp = self._exchange({"op": "load", "device": device, "model_id": self._model_id})
+            if not resp.get("ok"):
+                err = resp.get("error", "unknown error")
+                self._kill()
+                raise RuntimeError(f"OmniVoice worker failed to load: {err}")
 
     def unload(self) -> None:
         if self._proc is None:
