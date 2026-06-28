@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 
-import { ActionBar } from "@/components/ActionBar";
 import { InstallEngineDialog } from "@/components/InstallEngineDialog";
 import { DownloadModelDialog } from "@/components/DownloadModelDialog";
-import { PlayerFooter } from "@/components/PlayerFooter";
 import { SegmentCard } from "@/components/SegmentCard";
-import { Sidebar } from "@/components/Sidebar";
+import { VoiceLibrary } from "@/components/VoiceLibrary";
+import { SpeakerRoster } from "@/components/SpeakerRoster";
+import { MiddleToolbar } from "@/components/MiddleToolbar";
+import { InlinePlayer } from "@/components/InlinePlayer";
+import { ControlPanel } from "@/components/ControlPanel";
 import { useConfig } from "@/hooks/useConfig";
 import { useVoices } from "@/hooks/useVoices";
 import { useEngine } from "@/hooks/useEngine";
@@ -98,13 +100,6 @@ export default function App() {
   const [toast, setToast] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const [installEngine, setInstallEngine] = useState<string | null>(null);
   const [downloadEngine, setDownloadEngine] = useState<string | null>(null);
-  // Measured heights of the fixed top/bottom bars, so the segment list can
-  // pad itself by exactly the rendered heights (avoids overlap if a bar
-  // wraps to a second row at narrow viewport widths). Bumped initial
-  // guesses to the largest plausible single-row value, and we add a
-  // safety buffer below so a 1-2 px rounding error never causes overlap.
-  const [actionBarH, setActionBarH] = useState<number>(88);
-  const [playerFooterH, setPlayerFooterH] = useState<number>(96);
 
   const playerRef = useRef<AudioPlayer>(new AudioPlayer());
   const stopAllRef = useRef(false);
@@ -585,69 +580,33 @@ export default function App() {
   }
 
   return (
-    <div className={`flex min-h-screen ${isDark ? "bg-zinc-950" : "bg-gray-50"}`}>
-      <Sidebar
-        speakers={project.speakers}
+    <div className={`flex h-screen overflow-hidden ${isDark ? "bg-zinc-950" : "bg-gray-50"}`}>
+      <VoiceLibrary
         voices={displayedVoices}
         config={config}
         theme={theme}
-        onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-        onAddSpeaker={project.addSpeaker}
-        onUpdateSpeaker={project.updateSpeaker}
-        onRemoveSpeaker={project.removeSpeaker}
-        onSetSpeakerVoice={project.setSpeakerVoice}
         onUploadVoice={uploadVoice}
         onRemoveVoice={removeVoice}
         onUpdateVoiceMeta={handleUpdateVoiceMeta}
         supportsVoiceCloning={supportsVoiceCloning}
-        activeEngine={activeEngine}
       />
 
-      <main className="flex-1 ml-80 relative">
-        <ActionBar
-          segmentCount={project.segments.length}
+      {/* MIDDLE column: sticky toolbar, scroll body, sticky player */}
+      <main className="flex-1 flex flex-col min-w-0">
+        <MiddleToolbar
           validCount={validCount}
           cachedCount={cachedCount}
           busy={busy}
           isDark={isDark}
-          cfgScale={cfgScale}
-          onCfgScaleChange={setCfgScale}
-          exaggeration={exaggeration}
-          onExaggerationChange={setExaggeration}
-          engines={engines}
-          activeEngine={activeEngine}
-          onSelectEngine={async (name) => {
-            try {
-              await setActiveEngine(name);
-            } catch (err) {
-              showError(err, "Engine switch failed");
-            }
-          }}
-          onLoadEngine={async (name) => {
-            try {
-              await ensureEngineLoaded(name);
-            } catch (err) {
-              showError(err, "Engine load failed");
-            }
-          }}
-          onInstallEngine={(name) => setInstallEngine(name)}
-          onDownloadEngine={(name) => setDownloadEngine(name)}
           onAddSegment={project.addSegment}
           onGenerateAll={handleGenerateAll}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onLoadSample={handleLoadSample}
-          onHeightChange={setActionBarH}
         />
 
-        <div
-          style={{
-            paddingTop: actionBarH + 16,
-            paddingBottom: playerFooterH + 16,
-          }}
-          className="px-6"
-        >
-          <div className="max-w-5xl mx-auto">
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="max-w-5xl mx-auto space-y-4">
             {isExporting && (
               <div className="mb-6 p-4 bg-teal-900/30 rounded-xl border border-teal-600/30 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -683,6 +642,17 @@ export default function App() {
               </div>
             )}
 
+            <SpeakerRoster
+              speakers={project.speakers}
+              voices={displayedVoices}
+              isDark={isDark}
+              activeEngine={activeEngine}
+              onAddSpeaker={project.addSpeaker}
+              onUpdateSpeaker={project.updateSpeaker}
+              onRemoveSpeaker={project.removeSpeaker}
+              onSetSpeakerVoice={project.setSpeakerVoice}
+            />
+
             <div className="space-y-4">
               {project.segments.map((segment, index) => {
                 const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, activeEngine);
@@ -713,7 +683,7 @@ export default function App() {
           </div>
         </div>
 
-        <PlayerFooter
+        <InlinePlayer
           segmentCount={project.segments.length}
           validCount={validCount}
           cachedCount={cachedCount}
@@ -724,44 +694,73 @@ export default function App() {
           onPlayAll={handlePlayAll}
           onStopAll={handleStopAll}
           onExportAudio={handleExportAudio}
-          onHeightChange={setPlayerFooterH}
         />
-        {installEngine && (
-          <InstallEngineDialog
-            isDark={isDark}
-            engineName={installEngine}
-            displayName={
-              engines.find((e) => e.name === installEngine)?.display_name ?? installEngine
-            }
-            onClose={() => setInstallEngine(null)}
-            onInstalled={() => {
-              void refreshEngines();
-            }}
-          />
-        )}
-        {downloadEngine && (
-          <DownloadModelDialog
-            isDark={isDark}
-            engineName={downloadEngine}
-            displayName={
-              engines.find((e) => e.name === downloadEngine)?.display_name ??
-              downloadEngine
-            }
-            onClose={() => setDownloadEngine(null)}
-            onDone={async () => {
-              const name = downloadEngine;
-              await refreshEngines();
-              try {
-                await setActiveEngine(name);
-                await ensureEngineLoaded(name);
-              } catch (err) {
-                showError(err, "Engine load failed");
-              }
-              setDownloadEngine(null);
-            }}
-          />
-        )}
       </main>
+
+      <ControlPanel
+        isDark={isDark}
+        theme={theme}
+        onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        config={config}
+        engines={engines}
+        activeEngine={activeEngine}
+        onSelectEngine={async (name) => {
+          try {
+            await setActiveEngine(name);
+          } catch (err) {
+            showError(err, "Engine switch failed");
+          }
+        }}
+        onLoadEngine={async (name) => {
+          try {
+            await ensureEngineLoaded(name);
+          } catch (err) {
+            showError(err, "Engine load failed");
+          }
+        }}
+        onInstallEngine={(name) => setInstallEngine(name)}
+        onDownloadEngine={(name) => setDownloadEngine(name)}
+        cfgScale={cfgScale}
+        onCfgScaleChange={setCfgScale}
+        exaggeration={exaggeration}
+        onExaggerationChange={setExaggeration}
+      />
+
+      {installEngine && (
+        <InstallEngineDialog
+          isDark={isDark}
+          engineName={installEngine}
+          displayName={
+            engines.find((e) => e.name === installEngine)?.display_name ?? installEngine
+          }
+          onClose={() => setInstallEngine(null)}
+          onInstalled={() => {
+            void refreshEngines();
+          }}
+        />
+      )}
+      {downloadEngine && (
+        <DownloadModelDialog
+          isDark={isDark}
+          engineName={downloadEngine}
+          displayName={
+            engines.find((e) => e.name === downloadEngine)?.display_name ??
+            downloadEngine
+          }
+          onClose={() => setDownloadEngine(null)}
+          onDone={async () => {
+            const name = downloadEngine;
+            await refreshEngines();
+            try {
+              await setActiveEngine(name);
+              await ensureEngineLoaded(name);
+            } catch (err) {
+              showError(err, "Engine load failed");
+            }
+            setDownloadEngine(null);
+          }}
+        />
+      )}
     </div>
   );
 }
