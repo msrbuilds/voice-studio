@@ -62,6 +62,9 @@ export interface CacheEntryInfo {
   inference_ms: number;
   size_bytes: number;
   created_at: number;
+  text: string | null;
+  voice: string | null;
+  name: string;
 }
 
 export interface CacheListResponse {
@@ -86,6 +89,11 @@ export async function deleteCacheEntry(hash: string): Promise<{ deleted: string 
   return jsonOrThrow<{ deleted: string }>(
     await fetch(`${API_BASE}/cache/${encodeURIComponent(hash)}`, { method: "DELETE" }),
   );
+}
+
+/** Returns the relative URL for streaming a cached clip's WAV. */
+export function cacheAudioUrl(hash: string): string {
+  return `/api/cache/${hash}/audio`;
 }
 
 export async function getHealth(): Promise<HealthResponse> {
