@@ -25,8 +25,16 @@ function formatDate(t: number): string {
   return new Date(t * 1000).toLocaleString();
 }
 
+// Defensive display name: prefer the server-derived `name`, but fall back to a
+// hash-based label so the playlist still works against an older backend that
+// doesn't yet return `name` (transition period before a restart).
+function displayName(e: { name?: string | null; hash: string }): string {
+  const n = (e.name ?? "").trim();
+  return n || `Generation ${e.hash.slice(0, 8)}`;
+}
+
 function slugify(name: string, hash: string): string {
-  const s = name
+  const s = (name ?? "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -155,7 +163,7 @@ export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) 
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl;
-      a.download = `${slugify(entry.name, entry.hash)}.wav`;
+      a.download = `${slugify(displayName(entry), entry.hash)}.wav`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -259,7 +267,7 @@ export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) 
                         isDark ? "text-zinc-200" : "text-gray-800"
                       }`}
                     >
-                      {e.name}
+                      {displayName(e)}
                     </div>
                     <div
                       className={`text-xs mt-0.5 truncate ${

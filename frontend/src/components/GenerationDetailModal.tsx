@@ -85,7 +85,7 @@ export function GenerationDetailModal({ isDark, entry, onClose }: Props) {
                 isDark ? "text-white" : "text-gray-900"
               }`}
             >
-              {entry.name}
+              {(entry.name ?? "").trim() || `Generation ${entry.hash.slice(0, 8)}`}
             </div>
             <div
               className={`text-xs mt-0.5 ${isDark ? "text-zinc-500" : "text-gray-500"}`}
