@@ -139,6 +139,16 @@ class Engine(abc.ABC):
         """
         return True
 
+    def languages(self) -> list[dict[str, str]]:
+        """UI language options as [{"code","label"}].
+
+        Default empty = the engine shows no language selector (reference-
+        driven like VibeVoice, or auto-detected like OmniVoice). Cloning
+        engines that accept a language param (Chatterbox) and built-in-voice
+        engines whose voices are language-grouped (Kokoro) override this.
+        """
+        return []
+
     def stream_synthesize(
         self, req: EngineSynthRequest
     ) -> Iterator[EngineResult]:
@@ -196,6 +206,7 @@ class Engine(abc.ABC):
             "sample_rate": self.sample_rate() if self.is_loaded() else None,
             "max_speakers": self.max_speakers(),
             "default_cfg_scale": self.default_cfg_scale(),
+            "languages": self.languages(),
         }
 
     def engine_info(self) -> dict[str, Any]:
