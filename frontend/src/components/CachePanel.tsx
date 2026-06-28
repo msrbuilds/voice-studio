@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
-import { Database, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Database, Download, Pause, Play, Trash2, X } from "lucide-react";
 import {
+  cacheAudioUrl,
   clearCache,
   deleteCacheEntry,
   listCache,
+  type CacheEntryInfo,
   type CacheListResponse,
 } from "@/lib/api";
+import { GenerationDetailModal } from "./GenerationDetailModal";
 
 interface Props {
   isDark: boolean;
@@ -20,6 +23,14 @@ function formatBytes(n: number): string {
 
 function formatDate(t: number): string {
   return new Date(t * 1000).toLocaleString();
+}
+
+function slugify(name: string, hash: string): string {
+  const s = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || `generation-${hash.slice(0, 8)}`;
 }
 
 /**
@@ -79,8 +90,81 @@ interface BodyProps {
   onDelete: (hash: string) => void;
 }
 
-/** Reusable cache list body. Embed inside any popover. */
+/** Reusable cache list body — rendered as a Recent generations playlist. */
 export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) {
+  const [playingHash, setPlayingHash] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CacheEntryInfo | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Create the shared audio element once on mount
+  useEffect(() => {
+    const audio = new Audio();
+    audio.addEventListener("ended", () => setPlayingHash(null));
+    audioRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.src = "";
+    };
+  }, []);
+
+  const handleRowPlay = (e: React.MouseEvent, entry: CacheEntryInfo) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playingHash === entry.hash) {
+      // Toggle pause
+      audio.pause();
+      setPlayingHash(null);
+    } else {
+      audio.src = cacheAudioUrl(entry.hash);
+      audio.currentTime = 0;
+      void audio.play().then(() => {
+        setPlayingHash(entry.hash);
+      }).catch(() => {
+        setPlayingHash(null);
+      });
+    }
+  };
+
+  const stopSharedAudio = (hash?: string) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (hash === undefined || playingHash === hash) {
+      audio.pause();
+      audio.src = "";
+      setPlayingHash(null);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, hash: string) => {
+    e.stopPropagation();
+    stopSharedAudio(hash);
+    await onDelete(hash);
+  };
+
+  const handleClear = () => {
+    stopSharedAudio(); // stop regardless of which hash is playing
+    onClear();
+  };
+
+  const handleDownload = async (e: React.MouseEvent, entry: CacheEntryInfo) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(cacheAudioUrl(entry.hash));
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = `${slugify(entry.name, entry.hash)}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // Download failed silently; the row still exists
+    }
+  };
+
   if (!data) {
     return (
       <div className="px-4 py-6 text-center text-sm">
@@ -93,6 +177,7 @@ export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) 
 
   return (
     <>
+      {/* Header row */}
       <div
         className={`px-4 py-3 border-b flex items-center justify-between ${
           isDark ? "border-zinc-800" : "border-gray-200"
@@ -100,7 +185,7 @@ export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) 
       >
         <div>
           <div className={`text-sm font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
-            Synthesis cache
+            Recent generations
           </div>
           <div className={`text-xs mt-0.5 ${isDark ? "text-zinc-500" : "text-gray-500"}`}>
             {data.directory}
@@ -108,7 +193,7 @@ export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) 
         </div>
         <button
           type="button"
-          onClick={onClear}
+          onClick={handleClear}
           disabled={busy || data.entry_count === 0}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             isDark
@@ -120,6 +205,8 @@ export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) 
           Clear all
         </button>
       </div>
+
+      {/* Playlist */}
       <div className="max-h-80 overflow-y-auto">
         {data.entries.length === 0 ? (
           <div
@@ -127,61 +214,106 @@ export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) 
               isDark ? "text-zinc-500" : "text-gray-500"
             }`}
           >
-            Empty. Cache hits will appear here.
+            No generations yet.
           </div>
         ) : (
           <ul>
-            {data.entries.map((e) => (
-              <li
-                key={e.hash}
-                className={`px-4 py-2.5 border-b last:border-b-0 flex items-start gap-2 ${
-                  isDark ? "border-zinc-800" : "border-gray-100"
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <code
-                      className={`text-xs font-mono ${
-                        isDark ? "text-zinc-300" : "text-gray-700"
+            {data.entries.map((e) => {
+              const isPlaying = playingHash === e.hash;
+              return (
+                <li
+                  key={e.hash}
+                  className={`px-3 py-2.5 border-b last:border-b-0 flex items-center gap-2 cursor-pointer transition-colors ${
+                    isDark
+                      ? "border-zinc-800 hover:bg-zinc-800/50"
+                      : "border-gray-100 hover:bg-gray-50"
+                  }`}
+                  onClick={() => setDetail(e)}
+                  title="Click to open detail"
+                >
+                  {/* Play / pause button */}
+                  <button
+                    type="button"
+                    onClick={(ev) => handleRowPlay(ev, e)}
+                    disabled={busy}
+                    className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                      isPlaying
+                        ? "bg-teal-600/30 text-teal-400"
+                        : isDark
+                          ? "bg-zinc-700 hover:bg-zinc-600 text-zinc-300"
+                          : "bg-gray-200 hover:bg-gray-300 text-gray-600"
+                    }`}
+                    title={isPlaying ? "Pause" : "Play"}
+                  >
+                    {isPlaying ? (
+                      <Pause className="w-3.5 h-3.5" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+
+                  {/* Name + meta */}
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className={`text-sm font-medium truncate ${
+                        isDark ? "text-zinc-200" : "text-gray-800"
                       }`}
                     >
-                      {e.hash.slice(0, 12)}…
-                    </code>
-                    <span
-                      className={`text-xs ${
+                      {e.name}
+                    </div>
+                    <div
+                      className={`text-xs mt-0.5 truncate ${
                         isDark ? "text-zinc-500" : "text-gray-500"
                       }`}
                     >
-                      {e.duration_sec.toFixed(1)}s · {formatBytes(e.size_bytes)}
-                    </span>
+                      {e.duration_sec.toFixed(1)}s · {formatBytes(e.size_bytes)} · {formatDate(e.created_at)}
+                    </div>
                   </div>
-                  <div
-                    className={`text-xs mt-0.5 ${
-                      isDark ? "text-zinc-600" : "text-gray-400"
-                    }`}
-                  >
-                    {formatDate(e.created_at)} ·{" "}
-                    {e.inference_ms > 0 ? `${e.inference_ms}ms` : "instant"}
+
+                  {/* Download + Delete */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(ev) => void handleDownload(ev, e)}
+                      disabled={busy}
+                      className={`p-1 rounded transition-colors ${
+                        isDark
+                          ? "text-zinc-500 hover:text-teal-400"
+                          : "text-gray-400 hover:text-teal-600"
+                      }`}
+                      title="Download WAV"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(ev) => void handleDelete(ev, e.hash)}
+                      disabled={busy}
+                      className={`p-1 rounded transition-colors ${
+                        isDark
+                          ? "text-zinc-500 hover:text-red-400"
+                          : "text-gray-400 hover:text-red-600"
+                      }`}
+                      title="Delete this entry"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onDelete(e.hash)}
-                  disabled={busy}
-                  className={`p-1 rounded shrink-0 ${
-                    isDark
-                      ? "text-zinc-500 hover:text-red-400"
-                      : "text-gray-400 hover:text-red-600"
-                  }`}
-                  title="Delete this entry"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
+
+      {/* Detail modal */}
+      {detail && (
+        <GenerationDetailModal
+          isDark={isDark}
+          entry={detail}
+          onClose={() => setDetail(null)}
+        />
+      )}
     </>
   );
 }
