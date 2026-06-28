@@ -125,6 +125,14 @@ class OmniVoiceEngine(Engine):
         # backend/venv-omnivoice/.omnivoice-ready
         return self._worker_python.parent.parent / ".omnivoice-ready"
 
+    def downloaded(self) -> bool:
+        # OmniVoice weights live in the shared HF cache (backend/models/), which
+        # both the main process and the isolated worker read. Probe it so the UI
+        # can offer a Download (with progress) before the first worker load.
+        from ..model_cache import model_downloaded
+
+        return model_downloaded(self._model_id)
+
     def engine_info(self) -> dict[str, Any]:
         device = self._device_request
         if device == "auto":

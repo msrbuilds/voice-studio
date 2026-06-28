@@ -159,3 +159,28 @@ def test_build_synth_msg_auto():
     assert msg["mode"] == "auto"
     assert "ref_audio" not in msg
     assert "instruct" not in msg
+
+
+def test_downloaded_probes_model_id(monkeypatch):
+    from backend.core import model_cache
+
+    seen = {}
+
+    def fake_model_downloaded(repo_id):
+        seen["repo_id"] = repo_id
+        return True
+
+    monkeypatch.setattr(model_cache, "model_downloaded", fake_model_downloaded)
+    eng = OmniVoiceEngine(worker_python=Path("x"), worker_script=Path("y"))
+    assert eng.downloaded() is True
+    assert seen["repo_id"] == "k2-fsa/OmniVoice"
+    assert eng.info()["downloaded"] is True
+
+
+def test_downloaded_false_when_not_cached(monkeypatch):
+    from backend.core import model_cache
+
+    monkeypatch.setattr(model_cache, "model_downloaded", lambda repo_id: False)
+    eng = OmniVoiceEngine(worker_python=Path("x"), worker_script=Path("y"))
+    assert eng.downloaded() is False
+    assert eng.info()["downloaded"] is False
