@@ -19,6 +19,7 @@ from .core.hf_paths import configure_hf_cache as _configure_hf_cache
 _configure_hf_cache(_models_dir)
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
@@ -67,6 +68,29 @@ def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
     app.mount("/", StaticFiles(directory=dist_dir, html=True), name="frontend")
 
 
+def _warmup_active_engine(em: EngineManager) -> None:
+    """Load the active engine; swallow + log any failure.
+
+    Runs on a background thread so startup never blocks on it.
+    """
+    try:
+        em.ensure_active_loaded()
+    except Exception:  # noqa: BLE001
+        log.exception("Active engine failed to warm up; first use will retry.")
+
+
+def _start_background_warmup(em: EngineManager) -> threading.Thread:
+    """Start _warmup_active_engine on a daemon thread and return it."""
+    t = threading.Thread(
+        target=_warmup_active_engine,
+        args=(em,),
+        name="engine-warmup",
+        daemon=True,
+    )
+    t.start()
+    return t
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     # Re-configure HF cache from the resolved settings.models_dir so a
@@ -77,18 +101,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Eager load the active engine so /api/health is honest on first hit.
         em: EngineManager = app.state.engine_manager
-        try:
-            em.ensure_active_loaded()
-        except Exception:  # noqa: BLE001
-            log.exception(
-                "Active engine failed to load at startup; serving in degraded mode."
-            )
+        warmup = _start_background_warmup(em)
         try:
             yield
         finally:
-            # Unload every engine to free VRAM/RAM.
+            # Give an in-flight warm-up a moment to settle so we don't unload
+            # mid-load; if it's hung, proceed anyway (daemon thread).
+            warmup.join(timeout=2.0)
             for engine in em.list_engines():
                 try:
                     engine.unload()
