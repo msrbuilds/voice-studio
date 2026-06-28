@@ -20,7 +20,7 @@ import {
   AudioPlayer,
   wavToPcm16,
 } from "@/lib/audio";
-import { loadSample, type Sample } from "@/lib/samples";
+import { loadSample, loadTtsSample, type Sample, type TtsSample } from "@/lib/samples";
 import { useProject } from "@/lib/store";
 import type { CachedAudio, Project, Speaker, SynthSpeaker } from "@/types/models";
 import { getDefaultCfgForEngine } from "@/lib/engineHints";
@@ -499,6 +499,16 @@ export default function App() {
     [project],
   );
 
+  const handleLoadTtsSample = useCallback(
+    (s: TtsSample) => {
+      const { text, voiceId } = loadTtsSample(s);
+      pm.setTtsText(text);
+      // Use the suggested voice only if it exists in the current engine's voice list.
+      if (voiceId && displayedVoices.some((v) => v.id === voiceId)) pm.setTtsVoice(voiceId);
+    },
+    [pm, displayedVoices],
+  );
+
   // ---- export audio ----
 
   const handleExportAudio = useCallback(async () => {
@@ -653,7 +663,8 @@ export default function App() {
           onGenerateAll={handleGenerateAll}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
-          onLoadSample={handleLoadSample}
+          onLoadPodcastSample={handleLoadSample}
+          onLoadTtsSample={handleLoadTtsSample}
         />
 
         {pm.mode === null ? (

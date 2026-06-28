@@ -3,7 +3,7 @@ import { SampleMenu } from "./SampleMenu";
 import { ImportExportMenu } from "./ImportExportMenu";
 import { ModeToggle } from "./ModeToggle";
 import { useIsNarrow } from "@/hooks/useIsNarrow";
-import type { Sample } from "@/lib/samples";
+import type { Sample, TtsSample } from "@/lib/samples";
 import type { ProjectMode } from "@/types/models";
 
 interface Props {
@@ -17,7 +17,8 @@ interface Props {
   onGenerateAll: () => void;
   onExportJson: () => void;
   onImportJson: (file: File) => void;
-  onLoadSample: (sample: Sample) => void;
+  onLoadPodcastSample: (sample: Sample) => void;
+  onLoadTtsSample: (sample: TtsSample) => void;
 }
 
 export function MiddleToolbar({
@@ -31,7 +32,8 @@ export function MiddleToolbar({
   onGenerateAll,
   onExportJson,
   onImportJson,
-  onLoadSample,
+  onLoadPodcastSample,
+  onLoadTtsSample,
 }: Props) {
   const narrow = useIsNarrow();
 
@@ -112,7 +114,14 @@ export function MiddleToolbar({
           onImportJson={onImportJson}
         />
 
-        <SampleMenu isDark={isDark} onLoad={onLoadSample} />
+        {mode !== null && (
+          <SampleMenu
+            isDark={isDark}
+            mode={mode}
+            onLoadPodcast={onLoadPodcastSample}
+            onLoadTts={onLoadTtsSample}
+          />
+        )}
       </div>
     </div>
   );
