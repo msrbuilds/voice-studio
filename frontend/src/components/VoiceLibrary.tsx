@@ -12,6 +12,8 @@ interface Props {
   onRemoveVoice: (id: string) => Promise<void>;
   onUpdateVoiceMeta: (voiceId: string, meta: VoiceMetadata) => Promise<unknown>;
   supportsVoiceCloning: boolean;
+  selectedVoiceId?: string | null;
+  onSelectVoice?: (voiceId: string) => void;
 }
 
 export function VoiceLibrary({
@@ -22,6 +24,8 @@ export function VoiceLibrary({
   onRemoveVoice,
   onUpdateVoiceMeta,
   supportsVoiceCloning,
+  selectedVoiceId,
+  onSelectVoice,
 }: Props) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editingVoice, setEditingVoice] = useState<Voice | null>(null);
@@ -69,24 +73,30 @@ export function VoiceLibrary({
             Built-in voices
           </h2>
           <ul className="space-y-1">
-            {builtins.map((v) => (
+            {builtins.map((v) => {
+              const isSelected = onSelectVoice !== undefined && selectedVoiceId === v.id;
+              return (
               <li
                 key={v.id}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm ${bodyText} ${hover}`}
+                onClick={onSelectVoice ? () => onSelectVoice(v.id) : undefined}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm ${bodyText} ${hover} ${
+                  onSelectVoice ? "cursor-pointer" : ""
+                } ${isSelected ? "ring-1 ring-teal-500 bg-teal-600/10" : ""}`}
               >
                 <Volume2 className={`w-4 h-4 ${subtle}`} />
                 <span className="flex-1 truncate">{v.name}</span>
                 {v.gender && <span className={`text-xs ${subtle}`}>{v.gender}</span>}
                 <button
                   type="button"
-                  onClick={() => setEditingVoice(v)}
+                  onClick={(e) => { e.stopPropagation(); setEditingVoice(v); }}
                   className={`p-1 ${iconBtn}`}
                   title="Edit name / gender / language"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
               </li>
-            ))}
+              );
+            })}
             {builtins.length === 0 && (
               <li className={`text-xs italic px-2 py-1.5 ${empty}`}>
                 No built-in voices. Drop .wav files into backend/voices/.
@@ -113,17 +123,22 @@ export function VoiceLibrary({
             </button>
           </div>
           <ul className="space-y-1">
-            {uploads.map((v) => (
+            {uploads.map((v) => {
+              const isSelected = onSelectVoice !== undefined && selectedVoiceId === v.id;
+              return (
               <li
                 key={v.id}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm ${bodyText} ${hover}`}
+                onClick={onSelectVoice ? () => onSelectVoice(v.id) : undefined}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm ${bodyText} ${hover} ${
+                  onSelectVoice ? "cursor-pointer" : ""
+                } ${isSelected ? "ring-1 ring-teal-500 bg-teal-600/10" : ""}`}
               >
                 <Mic2 className="w-4 h-4 text-teal-500" />
                 <span className="flex-1 truncate">{v.name}</span>
                 {v.gender && <span className={`text-xs ${subtle}`}>{v.gender}</span>}
                 <button
                   type="button"
-                  onClick={() => setEditingVoice(v)}
+                  onClick={(e) => { e.stopPropagation(); setEditingVoice(v); }}
                   className={`p-1 ${iconBtn}`}
                   title="Edit name / gender / language"
                 >
@@ -131,14 +146,15 @@ export function VoiceLibrary({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onRemoveVoice(v.id)}
+                  onClick={(e) => { e.stopPropagation(); void onRemoveVoice(v.id); }}
                   className={`p-1 ${danger}`}
                   title="Delete"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </li>
-            ))}
+              );
+            })}
             {uploads.length === 0 && (
               <li className={`text-xs italic px-2 py-1.5 ${empty}`}>
                 Click + to upload a voice.
