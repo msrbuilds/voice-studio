@@ -555,7 +555,7 @@ export default function App() {
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
         <div className="flex items-center gap-3 text-zinc-300">
           <Loader2 className="w-5 h-5 animate-spin text-teal-400" />
-          Loading VibeVoice backend…
+          Loading Voice Studio backend…
         </div>
       </div>
     );
@@ -606,7 +606,7 @@ export default function App() {
         />
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="max-w-5xl mx-auto space-y-4">
+          <div className="max-w-5xl mx-auto">
             {isExporting && (
               <div className="mb-6 p-4 bg-teal-900/30 rounded-xl border border-teal-600/30 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -642,16 +642,18 @@ export default function App() {
               </div>
             )}
 
-            <SpeakerRoster
-              speakers={project.speakers}
-              voices={displayedVoices}
-              isDark={isDark}
-              activeEngine={activeEngine}
-              onAddSpeaker={project.addSpeaker}
-              onUpdateSpeaker={project.updateSpeaker}
-              onRemoveSpeaker={project.removeSpeaker}
-              onSetSpeakerVoice={project.setSpeakerVoice}
-            />
+            <div className="mb-4">
+              <SpeakerRoster
+                speakers={project.speakers}
+                voices={displayedVoices}
+                isDark={isDark}
+                activeEngine={activeEngine}
+                onAddSpeaker={project.addSpeaker}
+                onUpdateSpeaker={project.updateSpeaker}
+                onRemoveSpeaker={project.removeSpeaker}
+                onSetSpeakerVoice={project.setSpeakerVoice}
+              />
+            </div>
 
             <div className="space-y-4">
               {project.segments.map((segment, index) => {
