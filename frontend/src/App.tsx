@@ -7,11 +7,14 @@ import { SegmentCard } from "@/components/SegmentCard";
 import { VoiceLibrary } from "@/components/VoiceLibrary";
 import { SpeakerRoster } from "@/components/SpeakerRoster";
 import { MiddleToolbar } from "@/components/MiddleToolbar";
+import { ModeChooser } from "@/components/ModeChooser";
+import { TtsEditor } from "@/components/TtsEditor";
 import { InlinePlayer } from "@/components/InlinePlayer";
 import { ControlPanel } from "@/components/ControlPanel";
 import { useConfig } from "@/hooks/useConfig";
 import { useVoices } from "@/hooks/useVoices";
 import { useEngine } from "@/hooks/useEngine";
+import { useProjectMode } from "@/hooks/useProjectMode";
 import { ApiError, downloadPodcast, synthesizeWav, updateVoiceMeta } from "@/lib/api";
 import {
   AudioPlayer,
@@ -22,6 +25,8 @@ import { useProject } from "@/lib/store";
 import type { CachedAudio, Project, Speaker, SynthSpeaker } from "@/types/models";
 import { getDefaultCfgForEngine } from "@/lib/engineHints";
 import { effectiveMode } from "@/lib/omnivoice";
+
+const TTS_SEG_ID = "__tts__";
 
 type Theme = "light" | "dark";
 
@@ -82,8 +87,15 @@ export default function App() {
     ensureLoaded: ensureEngineLoaded,
     refresh: refreshEngines,
   } = useEngine();
-  const supportsVoiceCloning =
-    engines.find((e) => e.name === activeEngine)?.supports_voice_cloning ?? true;
+  const activeEngineInfo = engines.find((e) => e.name === activeEngine) ?? null;
+  const supportsVoiceCloning = activeEngineInfo?.supports_voice_cloning ?? true;
+  const engineLanguages = activeEngineInfo?.languages ?? [];
+  // Chatterbox: language is a synth param (cloning engine with languages)
+  const isCloningLangEngine = supportsVoiceCloning && engineLanguages.length > 0;
+  // Kokoro: language filters the voice list (built-in voice engine with languages)
+  const isFilterLangEngine = !supportsVoiceCloning && engineLanguages.length > 0;
+
+  const pm = useProjectMode();
 
   const [theme, setTheme] = useState<Theme>("dark");
   const [cfgScale, setCfgScale] = useState<number>(1.3);
@@ -174,7 +186,14 @@ export default function App() {
   //   those voices (engine="chatterbox") will also appear here.
   const displayedVoices = voices.filter((v) => {
     if (!activeEngine) return true;
-    if (activeEngine === "kokoro") return v.engine === "kokoro";
+    if (activeEngine === "kokoro") {
+      if (v.engine !== "kokoro") return false;
+      // When Kokoro is active and a TTS language filter is set, filter by voice language
+      if (isFilterLangEngine && pm.tts.language) {
+        return v.language === pm.tts.language;
+      }
+      return true;
+    }
     // Both VibeVoice and Chatterbox support cloning → show any voice
     // tagged with a voice-cloning engine. Today that's only "vibevoice"
     // (filesystem voices); if Chatterbox adds built-ins later, those
@@ -406,6 +425,34 @@ export default function App() {
     }
   }, [project, generateFor, showError, activeEngine]);
 
+  // ---- TTS mode generation ----
+
+  const generateTts = useCallback(async () => {
+    const voice = displayedVoices.find((v) => v.id === pm.tts.voiceId) ?? null;
+    if (!voice) { showError("Select a voice in the library first.", "No voice"); return; }
+    if (!pm.tts.text.trim()) return;
+    setGeneratingId(TTS_SEG_ID);
+    try {
+      const isChatterbox = activeEngine === "chatterbox";
+      const speakers: SynthSpeaker[] = [{ name: "Voice", voice: voice.id }];
+      const { audioData, cacheHash } = await synthesizeWav(pm.tts.text, speakers, cfgScale, {
+        cfgWeight: isChatterbox ? cfgScale : null,
+        exaggeration: isChatterbox ? exaggeration : null,
+        languageId: isCloningLangEngine ? (pm.tts.language ?? undefined) : undefined,
+      });
+      project.cacheAudio(TTS_SEG_ID, { audioData, text: pm.tts.text, voice: voice.id, ...(cacheHash ? { cacheHash } : {}) });
+    } catch (err) { showError(err, "Synthesis failed"); }
+    finally { setGeneratingId(null); }
+  }, [pm.tts, displayedVoices, activeEngine, cfgScale, exaggeration, isCloningLangEngine, project, showError]);
+
+  const playTts = useCallback(async () => {
+    const cached = project.audioCache[TTS_SEG_ID];
+    if (!cached) {
+      await generateTts();
+    }
+    await playCached(TTS_SEG_ID);
+  }, [project.audioCache, generateTts, playCached]);
+
   // ---- import / export json ----
 
   const handleExportJson = useCallback(() => {
@@ -589,6 +636,8 @@ export default function App() {
         onRemoveVoice={removeVoice}
         onUpdateVoiceMeta={handleUpdateVoiceMeta}
         supportsVoiceCloning={supportsVoiceCloning}
+        selectedVoiceId={pm.mode === "tts" ? pm.tts.voiceId : undefined}
+        onSelectVoice={pm.mode === "tts" ? pm.setTtsVoice : undefined}
       />
 
       {/* MIDDLE column: sticky toolbar, scroll body, sticky player */}
@@ -598,6 +647,8 @@ export default function App() {
           cachedCount={cachedCount}
           busy={busy}
           isDark={isDark}
+          mode={pm.mode}
+          onModeChange={pm.setMode}
           onAddSegment={project.addSegment}
           onGenerateAll={handleGenerateAll}
           onExportJson={handleExportJson}
@@ -605,27 +656,10 @@ export default function App() {
           onLoadSample={handleLoadSample}
         />
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="max-w-5xl mx-auto">
-            {isExporting && (
-              <div className="mb-6 p-4 bg-teal-900/30 rounded-xl border border-teal-600/30 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="w-5 h-5 text-teal-400 animate-spin" />
-                  <div>
-                    <p className="text-white font-medium">Exporting audio</p>
-                    <p className="text-teal-300 text-sm">{exportProgress}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setStopExport(true)}
-                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-
+        {pm.mode === null ? (
+          <ModeChooser isDark={isDark} onPick={pm.setMode} />
+        ) : pm.mode === "tts" ? (
+          <div className="flex-1 overflow-y-auto px-6 py-4">
             {toast && (
               <div
                 className={`mb-6 p-3 rounded-lg border text-sm ${
@@ -641,49 +675,102 @@ export default function App() {
                 {toast.text}
               </div>
             )}
+            <TtsEditor
+              isDark={isDark}
+              text={pm.tts.text}
+              onTextChange={pm.setTtsText}
+              activeVoice={displayedVoices.find((v) => v.id === pm.tts.voiceId) ?? null}
+              languages={engineLanguages}
+              showLanguage={isCloningLangEngine}
+              language={pm.tts.language}
+              onLanguageChange={pm.setTtsLanguage}
+              busy={busy}
+              isGenerating={generatingId === TTS_SEG_ID}
+              onGenerate={() => void generateTts()}
+              onPlay={() => void playTts()}
+            />
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="max-w-5xl mx-auto">
+              {isExporting && (
+                <div className="mb-6 p-4 bg-teal-900/30 rounded-xl border border-teal-600/30 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 text-teal-400 animate-spin" />
+                    <div>
+                      <p className="text-white font-medium">Exporting audio</p>
+                      <p className="text-teal-300 text-sm">{exportProgress}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStopExport(true)}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
 
-            <div className="mb-4">
-              <SpeakerRoster
-                speakers={project.speakers}
-                voices={displayedVoices}
-                isDark={isDark}
-                activeEngine={activeEngine}
-                onAddSpeaker={project.addSpeaker}
-                onUpdateSpeaker={project.updateSpeaker}
-                onRemoveSpeaker={project.removeSpeaker}
-                onSetSpeakerVoice={project.setSpeakerVoice}
-              />
-            </div>
+              {toast && (
+                <div
+                  className={`mb-6 p-3 rounded-lg border text-sm ${
+                    toast.kind === "error"
+                      ? isDark
+                        ? "bg-red-900/30 border-red-600/40 text-red-200"
+                        : "bg-red-50 border-red-200 text-red-700"
+                      : isDark
+                        ? "bg-zinc-800 border-zinc-700 text-zinc-200"
+                        : "bg-amber-50 border-amber-200 text-amber-800"
+                  }`}
+                >
+                  {toast.text}
+                </div>
+              )}
 
-            <div className="space-y-4">
-              {project.segments.map((segment, index) => {
-                const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, activeEngine);
-                return (
-                  <SegmentCard
-                    key={segment.id}
-                    segment={segment}
-                    index={index}
-                    speakers={project.speakers}
-                    busy={busy}
-                    isPlaying={playingId === segment.id}
-                    isGenerating={generatingId === segment.id}
-                    isCached={cached}
-                    canDelete={project.segments.length > 1}
-                    theme={theme}
-                    speakerColor={project.speakerColor}
-                    onUpdate={project.updateSegment}
-                    onRemove={project.removeSegment}
-                    onGenerate={() => generateFor(segment.id)}
-                    onRegenerate={() => generateFor(segment.id, { forceRegenerate: true })}
-                    onPlay={() => handlePlay(segment.id)}
-                    onStop={handleStop}
-                    onDownload={() => handleDownloadSegment(segment.id)}
-                  />
-                );
-              })}
+              <div className="mb-4">
+                <SpeakerRoster
+                  speakers={project.speakers}
+                  voices={displayedVoices}
+                  isDark={isDark}
+                  activeEngine={activeEngine}
+                  onAddSpeaker={project.addSpeaker}
+                  onUpdateSpeaker={project.updateSpeaker}
+                  onRemoveSpeaker={project.removeSpeaker}
+                  onSetSpeakerVoice={project.setSpeakerVoice}
+                />
+              </div>
+
+              <div className="space-y-4">
+                {project.segments.map((segment, index) => {
+                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, activeEngine);
+                  return (
+                    <SegmentCard
+                      key={segment.id}
+                      segment={segment}
+                      index={index}
+                      speakers={project.speakers}
+                      busy={busy}
+                      isPlaying={playingId === segment.id}
+                      isGenerating={generatingId === segment.id}
+                      isCached={cached}
+                      canDelete={project.segments.length > 1}
+                      theme={theme}
+                      speakerColor={project.speakerColor}
+                      onUpdate={project.updateSegment}
+                      onRemove={project.removeSegment}
+                      onGenerate={() => generateFor(segment.id)}
+                      onRegenerate={() => generateFor(segment.id, { forceRegenerate: true })}
+                      onPlay={() => handlePlay(segment.id)}
+                      onStop={handleStop}
+                      onDownload={() => handleDownloadSegment(segment.id)}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <InlinePlayer
           segmentCount={project.segments.length}

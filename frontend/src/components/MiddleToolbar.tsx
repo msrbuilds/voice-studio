@@ -1,14 +1,18 @@
 import { Plus, RefreshCw } from "lucide-react";
 import { SampleMenu } from "./SampleMenu";
 import { ImportExportMenu } from "./ImportExportMenu";
+import { ModeToggle } from "./ModeToggle";
 import { useIsNarrow } from "@/hooks/useIsNarrow";
 import type { Sample } from "@/lib/samples";
+import type { ProjectMode } from "@/types/models";
 
 interface Props {
   validCount: number;
   cachedCount: number;
   busy: boolean;
   isDark: boolean;
+  mode: ProjectMode | null;
+  onModeChange: (m: ProjectMode) => void;
   onAddSegment: () => void;
   onGenerateAll: () => void;
   onExportJson: () => void;
@@ -21,6 +25,8 @@ export function MiddleToolbar({
   cachedCount,
   busy,
   isDark,
+  mode,
+  onModeChange,
   onAddSegment,
   onGenerateAll,
   onExportJson,
@@ -55,6 +61,7 @@ export function MiddleToolbar({
   );
 
   const generateDisabled = busy || cachedCount === validCount;
+  const isPodcast = mode === "podcast";
 
   return (
     <div
@@ -63,33 +70,40 @@ export function MiddleToolbar({
       }`}
     >
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onAddSegment}
-          disabled={busy}
-          title="Add a new segment"
-          className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:bg-zinc-700 text-white disabled:text-zinc-500 rounded-lg font-medium transition-colors disabled:cursor-not-allowed"
-        >
-          {addLabel}
-        </button>
+        {mode !== null && (
+          <ModeToggle isDark={isDark} mode={mode} onChange={onModeChange} />
+        )}
+        {isPodcast && (
+          <button
+            type="button"
+            onClick={onAddSegment}
+            disabled={busy}
+            title="Add a new segment"
+            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:bg-zinc-700 text-white disabled:text-zinc-500 rounded-lg font-medium transition-colors disabled:cursor-not-allowed"
+          >
+            {addLabel}
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          onClick={onGenerateAll}
-          disabled={generateDisabled}
-          title={`Generate all uncached segments (${cachedCount}/${validCount} done)`}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:cursor-not-allowed ${
-            generateDisabled
-              ? isDark
-                ? "bg-zinc-800 text-zinc-500"
-                : "bg-gray-100 text-gray-400"
-              : "bg-amber-600 hover:bg-amber-500 text-white"
-          }`}
-        >
-          {generateLabel}
-        </button>
+        {isPodcast && (
+          <button
+            type="button"
+            onClick={onGenerateAll}
+            disabled={generateDisabled}
+            title={`Generate all uncached segments (${cachedCount}/${validCount} done)`}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:cursor-not-allowed ${
+              generateDisabled
+                ? isDark
+                  ? "bg-zinc-800 text-zinc-500"
+                  : "bg-gray-100 text-gray-400"
+                : "bg-amber-600 hover:bg-amber-500 text-white"
+            }`}
+          >
+            {generateLabel}
+          </button>
+        )}
 
         <ImportExportMenu
           isDark={isDark}
