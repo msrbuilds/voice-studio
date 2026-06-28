@@ -681,7 +681,7 @@ export default function App() {
               onTextChange={pm.setTtsText}
               activeVoice={displayedVoices.find((v) => v.id === pm.tts.voiceId) ?? null}
               languages={engineLanguages}
-              showLanguage={isCloningLangEngine}
+              showLanguage={engineLanguages.length > 0}
               language={pm.tts.language}
               onLanguageChange={pm.setTtsLanguage}
               busy={busy}
@@ -772,18 +772,20 @@ export default function App() {
           </div>
         )}
 
-        <InlinePlayer
-          segmentCount={project.segments.length}
-          validCount={validCount}
-          cachedCount={cachedCount}
-          isPlayingAll={isPlayingAll}
-          currentIndex={currentIndex}
-          isExporting={isExporting}
-          isDark={isDark}
-          onPlayAll={handlePlayAll}
-          onStopAll={handleStopAll}
-          onExportAudio={handleExportAudio}
-        />
+        {pm.mode === "podcast" && (
+          <InlinePlayer
+            segmentCount={project.segments.length}
+            validCount={validCount}
+            cachedCount={cachedCount}
+            isPlayingAll={isPlayingAll}
+            currentIndex={currentIndex}
+            isExporting={isExporting}
+            isDark={isDark}
+            onPlayAll={handlePlayAll}
+            onStopAll={handleStopAll}
+            onExportAudio={handleExportAudio}
+          />
+        )}
       </main>
 
       <ControlPanel
