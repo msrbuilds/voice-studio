@@ -467,12 +467,27 @@ export default function App() {
   }, [pm.tts, displayedVoices, activeEngine, cfgScale, exaggeration, isCloningLangEngine, project, showError]);
 
   const playTts = useCallback(async () => {
-    const cached = project.audioCache[TTS_SEG_ID];
-    if (!cached) {
+    // Toggle: if the TTS clip is already playing, this acts as Stop.
+    if (playingId === TTS_SEG_ID) {
+      handleStop();
+      return;
+    }
+    // Stop any other in-flight playback so clips never overlap.
+    playerRef.current.stop();
+    if (!project.audioCache[TTS_SEG_ID]) {
       await generateTts();
     }
-    await playCached(TTS_SEG_ID);
-  }, [project.audioCache, generateTts, playCached]);
+    setPlayingId(TTS_SEG_ID);
+    try {
+      await playCached(TTS_SEG_ID);
+    } catch (err) {
+      showError(err, "Playback failed");
+    } finally {
+      // Clear only if this clip is still the active one (a newer action may
+      // have taken over).
+      setPlayingId((id) => (id === TTS_SEG_ID ? null : id));
+    }
+  }, [playingId, project.audioCache, generateTts, playCached, handleStop, showError]);
 
   // ---- import / export json ----
 
@@ -724,6 +739,7 @@ export default function App() {
               onVoiceDesignChange={pm.setTtsVoiceDesign}
               busy={busy}
               isGenerating={generatingId === TTS_SEG_ID}
+              isPlaying={playingId === TTS_SEG_ID}
               onGenerate={() => void generateTts()}
               onPlay={() => void playTts()}
             />

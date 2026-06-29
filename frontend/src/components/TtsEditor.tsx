@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Loader2, Play, RefreshCw } from "lucide-react";
+import { Loader2, Play, RefreshCw, Square } from "lucide-react";
 import type { EngineLanguage, Voice } from "@/types/models";
 import { textStats, fmtDuration } from "@/lib/textStats";
 import { DESIGN_CHIPS, NONVERBAL_TAGS, appendDesignChip, type OmniMode } from "@/lib/omnivoice";
@@ -22,6 +22,7 @@ interface Props {
   onVoiceDesignChange: (v: string) => void;
   busy: boolean;
   isGenerating: boolean;
+  isPlaying: boolean;
   onGenerate: () => void;
   onPlay: () => void;
 }
@@ -30,7 +31,7 @@ export function TtsEditor(props: Props) {
   const {
     isDark, text, onTextChange, activeVoice, languages, showLanguage,
     language, onLanguageChange, isOmni, omniMode, onOmniModeChange,
-    voiceDesign, onVoiceDesignChange, busy, isGenerating, onGenerate, onPlay,
+    voiceDesign, onVoiceDesignChange, busy, isGenerating, isPlaying, onGenerate, onPlay,
   } = props;
   const stats = textStats(text);
   const inputBg = isDark ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-200 text-gray-900";
@@ -185,10 +186,12 @@ export function TtsEditor(props: Props) {
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white transition-colors">
             {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Generate
           </button>
-          <button type="button" onClick={onPlay} disabled={busy}
+          <button type="button" onClick={onPlay} disabled={busy && !isPlaying}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              isDark ? "bg-zinc-800 hover:bg-zinc-700 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"}`}>
-            <Play className="w-4 h-4" /> Play
+              isPlaying
+                ? "bg-teal-600 hover:bg-teal-500 text-white"
+                : isDark ? "bg-zinc-800 hover:bg-zinc-700 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"}`}>
+            {isPlaying ? <><Square className="w-4 h-4" /> Stop</> : <><Play className="w-4 h-4" /> Play</>}
           </button>
         </div>
       </div>
