@@ -25,9 +25,7 @@ export function SpeakerRoster({
   onSetSpeakerVoice,
 }: Props) {
   const heading = isDark ? "text-zinc-400" : "text-gray-600";
-  const iconBtn = isDark
-    ? "text-zinc-400 hover:text-orange-400"
-    : "text-gray-600 hover:text-orange-600";
+
 
   return (
     <section>
@@ -38,10 +36,15 @@ export function SpeakerRoster({
         <button
           type="button"
           onClick={onAddSpeaker}
-          className={`p-1 transition-colors ${iconBtn} ${focusRing}`}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${focusRing} ${
+            isDark
+              ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700"
+              : "bg-white hover:bg-gray-100 text-gray-700 hover:text-gray-900 border border-gray-300"
+          }`}
           title="Add speaker"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
+          Add
         </button>
       </div>
 
@@ -150,11 +153,11 @@ function SpeakerRow({
     <button
       type="button"
       onClick={() => setMode(m)}
-      className={`flex-1 px-2 py-1 text-[11px] font-medium rounded transition-colors ${
+      className={`flex-1 px-2 py-2 text-[14px] font-medium rounded transition-colors border ${
         mode === m
-          ? "bg-orange-600 text-white"
+          ? "bg-orange-600 text-white border-orange-500 hover:bg-orange-500"
           : isDark
-            ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+            ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border-zinc-700 hover:text-white"
             : "bg-gray-100 text-gray-600 hover:bg-gray-200"
       } ${focusRing}`}
     >
