@@ -26,26 +26,26 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
-  // Focus the confirm button on open; restore focus on close.
+  // For danger dialogs, focus Cancel so accidental Enter/Space can't confirm.
+  // For safe dialogs, focus Confirm for quick keyboard confirmation.
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
-    confirmRef.current?.focus();
+    (danger ? cancelRef : confirmRef).current?.focus();
     return () => prev?.focus?.();
-  }, [open]);
+  }, [open, danger]);
 
-  // Keyboard: Esc cancels, Enter confirms, Tab is trapped within the card.
+  // Keyboard: Esc cancels. Tab is trapped within the card.
+  // Enter is intentionally NOT wired to confirm — the user must click.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         onCancel();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        onConfirm();
       } else if (e.key === "Tab") {
         const card = cardRef.current;
         if (!card) return;
@@ -64,7 +64,7 @@ export function ConfirmDialog({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onCancel, onConfirm]);
+  }, [open, onCancel]);
 
   if (!open) return null;
 
@@ -104,6 +104,7 @@ export function ConfirmDialog({
         </p>
         <div className="mt-6 flex items-center justify-end gap-2">
           <button
+            ref={cancelRef}
             type="button"
             onClick={onCancel}
             className={`px-4 py-2 text-sm rounded-lg transition-colors ${cancelColor} ${focusRing}`}
