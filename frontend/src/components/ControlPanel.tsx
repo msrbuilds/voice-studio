@@ -137,11 +137,8 @@ export function ControlPanel({
           )}
         </section>
 
-        {/* Cache section */}
+        {/* Recent generations section (CacheBody renders its own heading + actions) */}
         <section>
-          <h3 className={`text-xs font-semibold uppercase tracking-wide mb-2 ${heading}`}>
-            Recent generations
-          </h3>
           <CacheBody
             isDark={isDark}
             data={cacheData}

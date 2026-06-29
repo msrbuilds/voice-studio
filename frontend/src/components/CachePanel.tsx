@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Database, Download, Pause, Play, Trash2, X } from "lucide-react";
+import { Database, Download, FolderOpen, Pause, Play, Trash2, X } from "lucide-react";
 import {
   cacheAudioUrl,
   clearCache,
@@ -185,33 +185,44 @@ export function CacheBody({ isDark, data, busy, onClear, onDelete }: BodyProps) 
 
   return (
     <>
-      {/* Header row */}
-      <div
-        className={`px-4 py-3 border-b flex items-center justify-between ${
-          isDark ? "border-zinc-800" : "border-gray-200"
-        }`}
-      >
-        <div>
-          <div className={`text-sm font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
-            Recent generations
-          </div>
-          <div className={`text-xs mt-0.5 ${isDark ? "text-zinc-500" : "text-gray-500"}`}>
-            {data.directory}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleClear}
-          disabled={busy || data.entry_count === 0}
-          className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-            isDark
-              ? "bg-red-900/30 hover:bg-red-900/50 text-red-300 border border-red-800/50"
-              : "bg-red-50 hover:bg-red-100 text-red-700 border border-red-200"
+      {/* Header — section heading on the left, icon actions on the right */}
+      <div className="flex items-center justify-between mb-2">
+        <h3
+          className={`text-xs font-semibold uppercase tracking-wide ${
+            isDark ? "text-zinc-500" : "text-gray-500"
           }`}
         >
-          <Trash2 className="w-3.5 h-3.5" />
-          Clear all
-        </button>
+          Recent generations
+        </h3>
+        <div className="flex items-center gap-0.5">
+          {data.directory && (
+            <button
+              type="button"
+              title={`Cache folder: ${data.directory} (click to copy path)`}
+              onClick={() => void navigator.clipboard?.writeText(data.directory)}
+              className={`p-1 rounded transition-colors ${
+                isDark
+                  ? "text-zinc-500 hover:text-teal-400"
+                  : "text-gray-400 hover:text-teal-600"
+              }`}
+            >
+              <FolderOpen className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={busy || data.entry_count === 0}
+            title="Clear all"
+            className={`p-1 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              isDark
+                ? "text-zinc-500 hover:text-red-400"
+                : "text-gray-400 hover:text-red-600"
+            }`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Playlist */}
