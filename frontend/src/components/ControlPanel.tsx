@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { focusRing } from "@/lib/theme";
+import { defaultControlPanelOpen } from "@/lib/layout";
 import type { EngineInfo } from "@/types/models";
 import { EngineSelector } from "./EngineSelector";
 import { CfgScaleBody } from "./CfgScaleControl";
@@ -40,7 +41,9 @@ export function ControlPanel({
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     const stored = localStorage.getItem(LS_KEY);
     if (stored !== null) return stored === "false";
-    return typeof window !== "undefined" ? window.innerWidth < 1200 : false;
+    return typeof window !== "undefined"
+      ? !defaultControlPanelOpen(window.innerWidth)
+      : false;
   });
 
   const { data: cacheData, busy: cacheBusy, refresh: cacheRefresh, onClear: onCacheClear, onDelete: onCacheDelete } = useCacheData();
