@@ -1,10 +1,11 @@
-import { Mic2, Pencil, Plus, Trash2, Volume2, Waves } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Mic2, Moon, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Sun, Trash2, Volume2, Waves } from "lucide-react";
 import type { ConfigResponse, Voice, VoiceMetadata } from "@/types/models";
 import { UploadVoiceDialog } from "./UploadVoiceDialog";
 import { VoiceMetaDialog } from "./VoiceMetaDialog";
 import { ThemeToggle } from "./ThemeToggle";
 import { focusRing } from "@/lib/theme";
+import { defaultVoiceLibraryOpen } from "@/lib/layout";
 import { useConfirm } from "./ConfirmProvider";
 
 interface Props {
@@ -36,6 +37,18 @@ export function VoiceLibrary({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editingVoice, setEditingVoice] = useState<Voice | null>(null);
 
+  const LS_KEY = "vs.voiceLibrary.open";
+  const [open, setOpen] = useState<boolean>(() => {
+    const stored = localStorage.getItem(LS_KEY);
+    if (stored !== null) return stored === "true";
+    return typeof window !== "undefined"
+      ? defaultVoiceLibraryOpen(window.innerWidth)
+      : true;
+  });
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, open ? "true" : "false");
+  }, [open]);
+
   const builtins = voices.filter((v) => v.source === "builtin");
   const uploads = voices.filter((v) => v.source === "upload");
 
@@ -56,20 +69,56 @@ export function VoiceLibrary({
     : "text-gray-600 hover:text-red-700";
   const empty = isDark ? "text-zinc-600" : "text-gray-600";
 
+  if (!open) {
+    return (
+      <aside
+        className={`w-12 shrink-0 z-10 border-r flex flex-col items-center pt-4 gap-3 transition-colors ${surface} ${border}`}
+      >
+        <div className="w-9 h-9 rounded-lg bg-teal-600/20 flex items-center justify-center">
+          <Waves className="w-5 h-5 text-teal-400" />
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={`p-2 rounded-lg transition-colors ${iconBtn} ${focusRing}`}
+          title="Open voice library"
+        >
+          <PanelLeftOpen className="w-5 h-5" />
+        </button>
+        <button
+          type="button"
+          onClick={onThemeToggle}
+          className={`p-2 rounded-lg transition-colors ${iconBtn} ${focusRing}`}
+          title="Toggle theme"
+        >
+          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside
       className={`w-80 shrink-0 z-10 border-r flex flex-col transition-colors ${surface} ${border}`}
     >
       <div className={`p-5 border-b flex items-center gap-3 ${border}`}>
-        <div className="w-9 h-9 rounded-lg bg-teal-600/20 flex items-center justify-center">
+        <div className="w-9 h-9 rounded-lg bg-teal-600/20 flex items-center justify-center shrink-0">
           <Waves className="w-5 h-5 text-teal-400" />
         </div>
-        <div>
-          <h1 className={`font-semibold text-sm ${isDark ? "text-white" : "text-gray-900"}`}>
+        <div className="min-w-0 flex-1">
+          <h1 className={`font-semibold text-sm truncate ${isDark ? "text-white" : "text-gray-900"}`}>
             Voice Studio by MSR
           </h1>
-          <p className={`text-xs ${heading}`}>Local · {config?.model_id ?? "—"}</p>
+          <p className={`text-xs truncate ${heading}`}>Local · {config?.model_id ?? "—"}</p>
         </div>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className={`p-1 rounded transition-colors ${iconBtn} ${focusRing}`}
+          title="Collapse voice library"
+        >
+          <PanelLeftClose className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
