@@ -50,3 +50,11 @@ def get_synth_cache(request: Request) -> SynthCache:
 
 def get_join_cache(request: Request) -> JoinCache:
     return request.app.state.join_cache  # type: ignore[no-any-return]
+
+
+def get_update_checker(request: Request):
+    return request.app.state.update_checker  # type: ignore[no-any-return]
+
+
+def get_update_runner(request: Request):
+    return request.app.state.update_runner  # type: ignore[no-any-return]
