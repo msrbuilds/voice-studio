@@ -8,6 +8,8 @@ import { CfgScaleBody } from "./CfgScaleControl";
 import { getCfgHints } from "@/lib/engineHints";
 import { ExaggerationBody } from "./ExaggerationControl";
 import { CacheBody, useCacheData } from "./CachePanel";
+import { useUpdate } from "@/hooks/useUpdate";
+import { UpdateDialog } from "./UpdateDialog";
 
 const LS_KEY = "vs.controlPanel.open";
 
@@ -61,6 +63,8 @@ export function ControlPanel({
   });
 
   const { data: cacheData, busy: cacheBusy, refresh: cacheRefresh, onClear: onCacheClear, onDelete: onCacheDelete } = useCacheData();
+  const { info: updateInfo, checking, check } = useUpdate();
+  const [updateOpen, setUpdateOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(LS_KEY, collapsed ? "false" : "true");
@@ -253,7 +257,52 @@ export function ControlPanel({
             Refresh list
           </button>
         </section>
+
+        {/* About / version */}
+        <section className="p-3 dark:bg-zinc-900 dark:border-zinc-800 bg-gray-100/80 border border-gray-200 rounded-lg">
+          <h3 className={`text-xs font-semibold uppercase tracking-wide mb-2 ${heading}`}>
+            About
+          </h3>
+          <div className="flex items-center justify-between gap-2">
+            <span className={`text-sm ${isDark ? "text-zinc-200" : "text-gray-800"}`}>
+              Voice Studio{updateInfo ? ` v${updateInfo.current}` : ""}
+            </span>
+            <button
+              type="button"
+              onClick={() => void check()}
+              disabled={checking}
+              className={`text-xs ${
+                isDark ? "text-zinc-400 hover:text-orange-400" : "text-gray-500 hover:text-orange-600"
+              } ${focusRing} ${checking ? "opacity-50 cursor-wait" : ""}`}
+              title="Check for updates"
+            >
+              {checking ? "Checking…" : "Check for updates"}
+            </button>
+          </div>
+          {updateInfo?.update_available && (
+            <button
+              type="button"
+              onClick={() => setUpdateOpen(true)}
+              className={`mt-2 w-full text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                isDark
+                  ? "bg-orange-700/40 hover:bg-orange-700/60 text-orange-200"
+                  : "bg-orange-50 hover:bg-orange-100 text-orange-700"
+              } ${focusRing}`}
+            >
+              {`Update to v${updateInfo.latest} available`}
+            </button>
+          )}
+          {updateInfo && !updateInfo.update_available && !updateInfo.error && updateInfo.latest && (
+            <p className={`mt-1 text-[11px] ${isDark ? "text-zinc-500" : "text-gray-500"}`}>
+              You're on the latest version.
+            </p>
+          )}
+        </section>
       </div>
+
+      {updateOpen && updateInfo && (
+        <UpdateDialog isDark={isDark} info={updateInfo} onClose={() => setUpdateOpen(false)} />
+      )}
     </aside>
   );
 }
