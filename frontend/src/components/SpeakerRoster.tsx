@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { Speaker, Voice } from "@/types/models";
-import { DESIGN_CHIPS, appendDesignChip, effectiveMode, type OmniMode } from "@/lib/voiceModes";
+import { DESIGN_CHIPS, appendDesignChip, availableModes, effectiveMode, modeLabel, type OmniMode } from "@/lib/voiceModes";
 import { focusRing } from "@/lib/theme";
 
 interface Props {
@@ -10,7 +10,6 @@ interface Props {
   activeEngine: string | null;
   supportsVoiceModes: boolean;
   supportsStyleClone: boolean;
-  supportsStylePrompt?: boolean;
   onAddSpeaker: () => void;
   onUpdateSpeaker: (id: string, patch: Partial<Speaker>) => void;
   onRemoveSpeaker: (id: string) => void;
@@ -24,7 +23,6 @@ export function SpeakerRoster({
   activeEngine,
   supportsVoiceModes,
   supportsStyleClone,
-  supportsStylePrompt = false,
   onAddSpeaker,
   onUpdateSpeaker,
   onRemoveSpeaker,
@@ -68,7 +66,6 @@ export function SpeakerRoster({
             activeEngine={activeEngine}
             supportsVoiceModes={supportsVoiceModes}
             supportsStyleClone={supportsStyleClone}
-            supportsStylePrompt={supportsStylePrompt}
           />
         ))}
       </div>
@@ -87,7 +84,6 @@ function SpeakerRow({
   activeEngine,
   supportsVoiceModes,
   supportsStyleClone,
-  supportsStylePrompt = false,
 }: {
   speaker: Speaker;
   voices: Voice[];
@@ -99,7 +95,6 @@ function SpeakerRow({
   activeEngine: string | null;
   supportsVoiceModes: boolean;
   supportsStyleClone: boolean;
-  supportsStylePrompt?: boolean;
 }) {
   const panelBg = isDark ? "bg-zinc-900/50" : "bg-gray-50";
   const panelBorder = isDark ? "border-zinc-800" : "border-gray-200";
@@ -152,26 +147,8 @@ function SpeakerRow({
   );
 
   const showModes = supportsVoiceModes;
-  const mode: OmniMode = effectiveMode(speaker);
+  const mode: OmniMode = effectiveMode(speaker, activeEngine);
   const setMode = (m: OmniMode) => onUpdate({ omnivoiceMode: m });
-
-  if (supportsStylePrompt) {
-    return (
-      <div className={`p-3 rounded-lg border ${panelBg} ${panelBorder}`}>
-        {nameHeader}
-        <div className="space-y-1.5">
-          {voiceSelect}
-          <input
-            type="text"
-            value={speaker.voiceDesign ?? ""}
-            onChange={(e) => onUpdate({ voiceDesign: e.target.value })}
-            placeholder="Style (optional) — e.g. cheerful, slightly faster, whispering"
-            className={`w-full border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-orange-500 ${selectBg} ${selectBorder} ${selectText}`}
-          />
-        </div>
-      </div>
-    );
-  }
 
   if (!showModes) {
     return (
@@ -182,30 +159,39 @@ function SpeakerRow({
     );
   }
 
-  const segBtn = (m: OmniMode, label: string) => (
-    <button
-      type="button"
-      onClick={() => setMode(m)}
-      className={`flex-1 px-2 py-2 text-[14px] font-medium rounded transition-colors border ${
-        mode === m
-          ? "bg-orange-600 text-white border-orange-500 hover:bg-orange-500"
-          : isDark
-            ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border-zinc-700 hover:text-white"
-            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-      } ${focusRing}`}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <div className={`p-3 rounded-lg border ${panelBg} ${panelBorder}`}>
       {nameHeader}
       <div className="flex gap-1 mb-2">
-        {segBtn("clone", "Clone")}
-        {segBtn("design", "Design")}
-        {segBtn("auto", "Auto")}
+        {availableModes(activeEngine).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={`flex-1 px-2 py-2 text-[14px] font-medium rounded transition-colors border ${
+              mode === m
+                ? "bg-orange-600 text-white border-orange-500 hover:bg-orange-500"
+                : isDark
+                  ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border-zinc-700 hover:text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            } ${focusRing}`}
+          >
+            {modeLabel(m)}
+          </button>
+        ))}
       </div>
+      {mode === "custom" && (
+        <div className="space-y-1.5">
+          {voiceSelect}
+          <input
+            type="text"
+            value={speaker.voiceDesign ?? ""}
+            onChange={(e) => onUpdate({ voiceDesign: e.target.value })}
+            placeholder="Style (optional) — e.g. cheerful, slightly faster"
+            className={`w-full border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-orange-500 ${selectBg} ${selectBorder} ${selectText}`}
+          />
+        </div>
+      )}
       {mode === "clone" && (
         <div className="space-y-1.5">
           {voiceSelect}
