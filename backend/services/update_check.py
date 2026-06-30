@@ -14,6 +14,7 @@ import logging
 import re
 import threading
 import time
+import urllib.error
 import urllib.request
 from typing import Callable, Optional
 
@@ -131,6 +132,20 @@ class UpdateChecker:
         try:
             payload = self._fetcher()
             snap = build_snapshot(payload, current=self._current, checked_at=now)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                # GitHub returns 404 for /releases/latest when the repo has no
+                # published releases yet. That's not a failure — there's simply
+                # nothing to update to. Record a clean "no releases" snapshot so
+                # the UI shows the current version without a scary error.
+                snap = build_snapshot(
+                    None, current=self._current, checked_at=now, error=None
+                )
+            else:
+                log.info("Update check failed: %s", exc)
+                snap = build_snapshot(
+                    None, current=self._current, checked_at=now, error=str(exc)
+                )
         except Exception as exc:  # noqa: BLE001
             log.info("Update check failed: %s", exc)
             snap = build_snapshot(

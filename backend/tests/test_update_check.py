@@ -1,4 +1,5 @@
 import sys
+import urllib.error
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -68,6 +69,22 @@ def test_checker_uses_injected_fetcher_and_caches():
     # force=True re-fetches.
     chk.check(force=True)
     assert calls["n"] == 2
+
+
+def test_checker_treats_404_as_no_releases_not_error():
+    """GitHub 404 on /releases/latest means 'no releases published yet' — it must
+    surface as a clean snapshot (no error string), not a scary failure."""
+
+    def fetcher():
+        raise urllib.error.HTTPError(
+            url="u", code=404, msg="Not Found", hdrs=None, fp=None
+        )
+
+    chk = UpdateChecker(current="0.2.0", fetcher=fetcher)
+    snap = chk.check()
+    assert snap["update_available"] is False
+    assert snap["latest"] is None
+    assert snap["error"] is None
 
 
 def test_checker_swallows_fetch_errors():

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { PanelRightClose, PanelRightOpen, Github, Linkedin, Youtube, Globe } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 import { defaultControlPanelOpen } from "@/lib/layout";
 import type { EngineInfo } from "@/types/models";
@@ -12,6 +12,23 @@ import { useUpdate } from "@/hooks/useUpdate";
 import { UpdateDialog } from "./UpdateDialog";
 
 const LS_KEY = "vs.controlPanel.open";
+
+/** X (formerly Twitter) logo — lucide ships only the legacy bird, so inline it. */
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+const SOCIAL_LINKS = [
+  { label: "GitHub", href: "https://github.com/msrbuilds", Icon: Github },
+  { label: "X (Twitter)", href: "https://x.com/MSR_Builds", Icon: XIcon },
+  { label: "LinkedIn", href: "https://www.linkedin.com/in/mian-shahzad-raza/", Icon: Linkedin },
+  { label: "YouTube", href: "https://www.youtube.com/@WPAcademyPK", Icon: Youtube },
+  { label: "Website", href: "https://msrbuilds.com/", Icon: Globe },
+] as const;
 
 interface Props {
   isDark: boolean;
@@ -264,7 +281,7 @@ export function ControlPanel({
             About
           </h3>
           <div className="flex items-center justify-between gap-2">
-            <span className={`text-sm ${isDark ? "text-zinc-200" : "text-gray-800"}`}>
+            <span className={`text-sm font-medium ${isDark ? "text-zinc-100" : "text-gray-900"}`}>
               Voice Studio{updateInfo ? ` v${updateInfo.current}` : ""}
             </span>
             <button
@@ -278,6 +295,44 @@ export function ControlPanel({
             >
               {checking ? "Checking…" : "Check for updates"}
             </button>
+          </div>
+          <p className={`mt-1.5 text-[11px] leading-relaxed ${isDark ? "text-zinc-400" : "text-gray-600"}`}>
+            A fully-offline, local studio for multiple open-source TTS engines —
+            VibeVoice, Kokoro, Chatterbox, OmniVoice, VoxCPM &amp; Qwen3-TTS.
+          </p>
+          <p className={`mt-1 text-[11px] ${isDark ? "text-zinc-500" : "text-gray-500"}`}>
+            Built by{" "}
+            <a
+              href="https://msrbuilds.com/"
+              target="_blank"
+              rel="noreferrer noopener"
+              className={`font-medium ${
+                isDark ? "text-zinc-300 hover:text-orange-400" : "text-gray-700 hover:text-orange-600"
+              } ${focusRing}`}
+            >
+              Mian Shahzad Raza (MSR)
+            </a>
+          </p>
+          <div className={`mt-2.5 pt-2.5 flex items-center gap-1 border-t ${
+            isDark ? "border-zinc-800" : "border-gray-200"
+          }`}>
+            {SOCIAL_LINKS.map(({ label, href, Icon }) => (
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                title={label}
+                aria-label={label}
+                className={`p-1.5 rounded-md transition-colors ${
+                  isDark
+                    ? "text-zinc-400 hover:text-orange-400 hover:bg-zinc-800"
+                    : "text-gray-500 hover:text-orange-600 hover:bg-gray-200/70"
+                } ${focusRing}`}
+              >
+                <Icon className="w-4 h-4" />
+              </a>
+            ))}
           </div>
           {updateInfo?.update_available && (
             <button
