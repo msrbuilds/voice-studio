@@ -529,9 +529,9 @@ def _voice_cache_key(
         base = voice_id
     if voice_mode:
         base += f"|vm={voice_mode}"
-    # Fold the style/instruct prompt independent of voice_mode: Qwen
-    # (supports_style_prompt) sends an always-available style with voice_mode
-    # None, so gating this on voice_mode would let different styles collide.
+    # Fold the style/instruct prompt independent of voice_mode so different
+    # styles never share a cache slot (kept independent for robustness even
+    # though every style-carrying mode currently also sets a voice_mode).
     if instruct:
         base += f"|in={instruct}"
     if reference_text:

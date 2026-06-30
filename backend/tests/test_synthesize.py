@@ -43,8 +43,8 @@ def test_cache_key_qwen_omitted_when_absent():
 
 
 def test_cache_key_folds_style_prompt_without_voice_mode():
-    # Qwen (supports_style_prompt) sends an always-available style with
-    # voice_mode None. Different styles must land in different slots.
+    # A style/instruct passed with voice_mode None must still split cache
+    # slots — the fold is independent of voice_mode for robustness.
     happy = _vck_qwen("Vivian", None, "cheerful", None)
     sad = _vck_qwen("Vivian", None, "somber", None)
     none = _vck_qwen("Vivian", None, None, None)

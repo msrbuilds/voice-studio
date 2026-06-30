@@ -69,7 +69,6 @@ export interface EngineInfo {
   languages: EngineLanguage[];
   supports_voice_modes: boolean;
   supports_style_clone: boolean;
-  supports_style_prompt: boolean;
 }
 
 export interface InstallStatus {
