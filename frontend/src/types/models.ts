@@ -160,6 +160,10 @@ export interface CachedAudio {
   // OmniVoice: what mode/prompt produced this, so the cached badge stays honest.
   mode?: "clone" | "design" | "auto";
   instruct?: string;
+  // VoxCPM Quality (inference timesteps preset) that produced this clip, so the
+  // cache badge re-synths when the user changes Quality. Undefined for engines
+  // that don't use it.
+  quality?: "fast" | "balanced" | "high";
 }
 
 export interface Project {

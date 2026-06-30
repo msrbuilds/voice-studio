@@ -45,6 +45,7 @@ function isSegmentCached(
   cache: Record<string, CachedAudio>,
   speakers: Speaker[],
   supportsVoiceModes: boolean,
+  effectiveQuality: "fast" | "balanced" | "high" | undefined,
 ): { cached: boolean; voice: string | null; signature: string } {
   const entry = cache[segment.id];
   if (!entry) return { cached: false, voice: null, signature: "" };
@@ -57,24 +58,26 @@ function isSegmentCached(
       const voice = speaker.voice;
       if (!voice) return { cached: false, voice: null, signature: "" };
       const style = (speaker.voiceDesign ?? "").trim();
-      const signature = `${segment.text}::${voice}::clone::${style}`;
+      const signature = `${segment.text}::${voice}::clone::${style}::${effectiveQuality ?? ""}`;
       return {
         cached:
           entry.text === segment.text &&
           entry.voice === voice &&
           entry.mode === "clone" &&
-          (entry.instruct ?? "") === style,
+          (entry.instruct ?? "") === style &&
+          entry.quality === effectiveQuality,
         voice,
         signature,
       };
     }
     const design = mode === "design" ? (speaker.voiceDesign ?? "").trim() : "";
-    const signature = `${segment.text}::${mode}::${design}`;
+    const signature = `${segment.text}::${mode}::${design}::${effectiveQuality ?? ""}`;
     return {
       cached:
         entry.text === segment.text &&
         entry.mode === mode &&
-        (entry.instruct ?? "") === design,
+        (entry.instruct ?? "") === design &&
+        entry.quality === effectiveQuality,
       voice: null,
       signature,
     };
@@ -82,8 +85,12 @@ function isSegmentCached(
 
   const voice = speaker.voice;
   if (!voice) return { cached: false, voice: null, signature: "" };
-  const signature = `${segment.text}::${voice}::${segment.speakerId ?? ""}`;
-  return { cached: entry.text === segment.text && entry.voice === voice, voice, signature };
+  const signature = `${segment.text}::${voice}::${segment.speakerId ?? ""}::${effectiveQuality ?? ""}`;
+  return {
+    cached: entry.text === segment.text && entry.voice === voice && entry.quality === effectiveQuality,
+    voice,
+    signature,
+  };
 }
 
 export default function App() {
@@ -277,6 +284,7 @@ export default function App() {
           ...(cacheHash ? { cacheHash } : {}),
           ...(isOmni ? { mode } : {}),
           ...(instruct ? { instruct } : {}),
+          quality: activeEngine === "voxcpm" ? quality : undefined,
         });
       } catch (err: unknown) {
         showError(err, "Synthesis failed");
@@ -307,7 +315,7 @@ export default function App() {
       try {
         const seg = project.segments.find((s) => s.id === segmentId);
         if (!seg) return;
-        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes);
+        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
         if (!cached) {
           await generateFor(segmentId);
         }
@@ -318,7 +326,7 @@ export default function App() {
         setPlayingId((id) => (id === segmentId ? null : id));
       }
     },
-    [project, generateFor, playCached, showError, activeEngine],
+    [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, quality],
   );
 
   const handleStop = useCallback(() => {
@@ -364,7 +372,7 @@ export default function App() {
         setCurrentIndex(i);
         setPlayingId(seg.id);
         try {
-          const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes);
+          const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
           if (!cached) {
             setGeneratingId(seg.id);
             try {
@@ -383,7 +391,7 @@ export default function App() {
       setCurrentIndex(-1);
       setPlayingId(null);
     }
-  }, [project, generateFor, playCached, showError, activeEngine]);
+  }, [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, quality]);
 
   const handleStopAll = useCallback(() => {
     stopAllRef.current = true;
@@ -439,7 +447,7 @@ export default function App() {
       for (let i = 0; i < valid.length; i++) {
         const seg = valid[i]!;
         // Skip already-cached segments
-        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes);
+        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
         if (cached) continue;
 
         setExportProgress(`Segment ${i + 1}/${valid.length}`);
@@ -456,7 +464,7 @@ export default function App() {
       setIsExporting(false);
       setExportProgress("");
     }
-  }, [project, generateFor, showError, activeEngine]);
+  }, [project, generateFor, showError, activeEngine, supportsVoiceModes, quality]);
 
   // ---- TTS mode generation ----
 
@@ -500,6 +508,7 @@ export default function App() {
         ...(cacheHash ? { cacheHash } : {}),
         ...(isOmni ? { mode } : {}),
         ...(instruct ? { instruct } : {}),
+        quality: activeEngine === "voxcpm" ? quality : undefined,
       });
     } catch (err) { showError(err, "Synthesis failed"); }
     finally { setGeneratingId(null); }
@@ -602,6 +611,7 @@ export default function App() {
       language_id?: string;
       voice_mode?: "clone" | "design" | "auto";
       instruct?: string;
+      inference_steps?: number;
     }[] = [];
     const isChatterbox = activeEngine === "chatterbox";
     const isOmni = supportsVoiceModes;
@@ -641,6 +651,7 @@ export default function App() {
         ...(isChatterbox ? { exaggeration } : {}),
         ...(isOmni ? { voice_mode: mode } : {}),
         ...(instruct ? { instruct } : {}),
+        ...(activeEngine === "voxcpm" ? { inference_steps: QUALITY_TIMESTEPS[quality] } : {}),
       });
     }
 
@@ -669,7 +680,7 @@ export default function App() {
       setIsExporting(false);
       setExportProgress("");
     }
-  }, [project, showError, cfgScale, exaggeration, activeEngine]);
+  }, [project, showError, cfgScale, exaggeration, activeEngine, supportsVoiceModes, quality]);
 
   const viewportWidth = useViewportWidth();
 
@@ -680,10 +691,10 @@ export default function App() {
   const cachedCount = useMemo(
     () =>
       project.segments.filter((s) => {
-        const { cached } = isSegmentCached(s, project.audioCache, project.speakers, supportsVoiceModes);
+        const { cached } = isSegmentCached(s, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
         return cached;
       }).length,
-    [project.segments, project.audioCache, project.speakers, supportsVoiceModes],
+    [project.segments, project.audioCache, project.speakers, supportsVoiceModes, activeEngine, quality],
   );
   const busy = isPlayingAll || isExporting || generatingId !== null;
 
@@ -849,7 +860,7 @@ export default function App() {
 
               <div className="space-y-4">
                 {project.segments.map((segment, index) => {
-                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, supportsVoiceModes);
+                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
                   return (
                     <SegmentCard
                       key={segment.id}

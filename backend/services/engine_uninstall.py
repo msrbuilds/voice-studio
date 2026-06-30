@@ -20,7 +20,7 @@ from typing import Callable
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]  # backend/services/.. -> backend/
 
-#: Only these two engines have an isolated venv to remove.
+#: Only these three engines have an isolated venv to remove.
 UNINSTALLABLE: frozenset[str] = frozenset({"chatterbox", "omnivoice", "voxcpm"})
 
 _MAX_LOG_LINES = 500
