@@ -95,6 +95,7 @@ export default function App() {
     refresh: refreshEngines,
   } = useEngine();
   const activeEngineInfo = engines.find((e) => e.name === activeEngine) ?? null;
+  const supportsVoiceModes = activeEngineInfo?.supports_voice_modes ?? false;
   const supportsVoiceCloning = activeEngineInfo?.supports_voice_cloning ?? true;
   const engineLanguages = activeEngineInfo?.languages ?? [];
   // Chatterbox: language is a synth param (cloning engine with languages)
@@ -221,14 +222,19 @@ export default function App() {
         showError("No speaker assigned to this segment.", "No speaker");
         return;
       }
-      const isOmni = activeEngine === "omnivoice";
+      const isOmni = supportsVoiceModes;
       const mode = isOmni ? effectiveMode(speaker) : "clone";
-      // A reference voice is required except for OmniVoice design/auto.
+      // A reference voice is required except for design/auto modes.
       if (mode === "clone" && !speaker.voice) {
         showError("No voice assigned to the speaker. Pick one in the sidebar.", "No voice");
         return;
       }
-      const instruct = mode === "design" ? (speaker.voiceDesign ?? "") : undefined;
+      const instruct =
+        mode === "design" || mode === "clone"
+          ? speaker.voiceDesign?.trim()
+            ? speaker.voiceDesign.trim()
+            : undefined
+          : undefined;
       const speakers: SynthSpeaker[] = [
         {
           name: speaker.name,
@@ -391,7 +397,7 @@ export default function App() {
         showError("Some segments have no speaker assigned.", "Missing speaker");
         return;
       }
-      const spMode = activeEngine === "omnivoice" ? effectiveMode(sp) : "clone";
+      const spMode = supportsVoiceModes ? effectiveMode(sp) : "clone";
       if (spMode === "clone" && !sp.voice) {
         showError(
           "Some segments have no voice. Assign voices in the sidebar first.",
@@ -438,17 +444,22 @@ export default function App() {
 
   const generateTts = useCallback(async () => {
     if (!pm.tts.text.trim()) return;
-    const isOmni = activeEngine === "omnivoice";
+    const isOmni = supportsVoiceModes;
     const voice = displayedVoices.find((v) => v.id === pm.tts.voiceId) ?? null;
     const mode: OmniMode = isOmni
       ? effectiveMode({ voice: pm.tts.voiceId ?? "", omnivoiceMode: pm.tts.omnivoiceMode })
       : "clone";
-    // A reference voice is required except for OmniVoice design/auto.
+    // A reference voice is required except for design/auto modes.
     if (mode === "clone" && !voice) {
       showError("Select a voice in the library first.", "No voice");
       return;
     }
-    const instruct = mode === "design" ? (pm.tts.voiceDesign ?? "") : undefined;
+    const instruct =
+      mode === "design" || mode === "clone"
+        ? pm.tts.voiceDesign?.trim()
+          ? pm.tts.voiceDesign.trim()
+          : undefined
+        : undefined;
     setGeneratingId(TTS_SEG_ID);
     try {
       const isChatterbox = activeEngine === "chatterbox";
@@ -574,7 +585,7 @@ export default function App() {
       instruct?: string;
     }[] = [];
     const isChatterbox = activeEngine === "chatterbox";
-    const isOmni = activeEngine === "omnivoice";
+    const isOmni = supportsVoiceModes;
     for (const seg of valid) {
       const speaker = project.speakers.find((s) => s.id === seg.speakerId);
       if (!speaker) {
@@ -592,7 +603,12 @@ export default function App() {
         );
         return;
       }
-      const instruct = mode === "design" ? (speaker.voiceDesign ?? "") : undefined;
+      const instruct =
+        mode === "design" || mode === "clone"
+          ? speaker.voiceDesign?.trim()
+            ? speaker.voiceDesign.trim()
+            : undefined
+          : undefined;
       // Pass the per-segment cache hash so the backend can detect when a
       // segment was regenerated and avoid serving a stale joined WAV.
       const cached = project.audioCache[seg.id];
