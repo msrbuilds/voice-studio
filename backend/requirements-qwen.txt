@@ -1,0 +1,3 @@
+qwen-tts
+# torch + torchaudio are installed separately by studio.py with a CUDA-matched
+# wheel (see _ensure_qwen_env). Do NOT pin torch here.
