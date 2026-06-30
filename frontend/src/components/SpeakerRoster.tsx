@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { Speaker, Voice } from "@/types/models";
-import { DESIGN_CHIPS, appendDesignChip, effectiveMode, type OmniMode } from "@/lib/omnivoice";
+import { DESIGN_CHIPS, appendDesignChip, effectiveMode, type OmniMode } from "@/lib/voiceModes";
 import { focusRing } from "@/lib/theme";
 
 interface Props {

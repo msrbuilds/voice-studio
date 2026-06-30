@@ -14,7 +14,7 @@ export interface TtsBuffer {
   voiceId: string | null;
   language: string | null;
   // OmniVoice only: per-buffer voice mode + design prompt. Other engines
-  // ignore these. Mode is derived when unset (see lib/omnivoice.ts).
+  // ignore these. Mode is derived when unset (see lib/voiceModes.ts).
   omnivoiceMode?: "clone" | "design" | "auto";
   voiceDesign?: string;
 }
@@ -141,7 +141,7 @@ export interface Speaker {
   voice: string; // Voice.id
   color: string;
   // OmniVoice only: per-speaker voice mode + design prompt (optional; other
-  // engines ignore). Mode is derived when unset — see lib/omnivoice.ts.
+  // engines ignore). Mode is derived when unset — see lib/voiceModes.ts.
   omnivoiceMode?: "clone" | "design" | "auto";
   voiceDesign?: string;
 }

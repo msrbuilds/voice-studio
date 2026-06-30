@@ -1,28 +1,26 @@
-// OmniVoice per-speaker voice-mode helpers (Spec B).
+// Shared per-speaker voice-mode helpers for engines that support
+// Clone/Design/Auto (OmniVoice and VoxCPM). OmniVoice-specific design-chip
+// vocabulary is kept here but only surfaced for OmniVoice in the UI.
 
-export type OmniMode = "clone" | "design" | "auto";
+export type VoiceMode = "clone" | "design" | "auto";
+// Back-compat alias for existing call sites.
+export type OmniMode = VoiceMode;
 
-// One-tap chips that append to the design prompt. These MUST be drawn from
-// OmniVoice's official valid English instruct vocabulary — the worker rejects
-// any unknown item (e.g. "calm"/"energetic"/"warm" are NOT valid). Grouped
-// gender → age → pitch → accent → style; order = display order.
+// OmniVoice's official valid English instruct vocabulary (the worker rejects
+// unknown items). VoxCPM uses FREE-TEXT design/style, so it does NOT use these.
 export const DESIGN_CHIPS: string[] = [
-  // gender
   "female",
   "male",
-  // age
   "child",
   "teenager",
   "young adult",
   "middle-aged",
   "elderly",
-  // pitch
   "very low pitch",
   "low pitch",
   "moderate pitch",
   "high pitch",
   "very high pitch",
-  // accent
   "american accent",
   "british accent",
   "australian accent",
@@ -33,14 +31,9 @@ export const DESIGN_CHIPS: string[] = [
   "korean accent",
   "russian accent",
   "portuguese accent",
-  // style
   "whisper",
 ];
 
-// Inline non-verbal sound tags OmniVoice understands. Inserting one of these
-// directly into the input text produces an expressive non-verbal sound, e.g.
-//   "[laughter] You really got me."
-// The text is passed to the model verbatim, so this is purely an input-helper.
 export const NONVERBAL_TAGS: string[] = [
   "[laughter]",
   "[sigh]",
@@ -58,11 +51,11 @@ export const NONVERBAL_TAGS: string[] = [
 ];
 
 /**
- * The speaker's effective OmniVoice mode. An explicit choice wins; otherwise
- * clone if a reference voice is set, else auto. Keeping it derived means
- * switching engines never mutates speaker state.
+ * The speaker's effective voice mode. An explicit choice wins; otherwise clone
+ * if a reference voice is set, else auto. Keeping it derived means switching
+ * engines never mutates speaker state.
  */
-export function effectiveMode(speaker: { voice: string; omnivoiceMode?: OmniMode }): OmniMode {
+export function effectiveMode(speaker: { voice: string; omnivoiceMode?: VoiceMode }): VoiceMode {
   return speaker.omnivoiceMode ?? (speaker.voice ? "clone" : "auto");
 }
 

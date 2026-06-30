@@ -3,7 +3,7 @@ import { Loader2, Play, RefreshCw, Square } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 import type { EngineLanguage, Voice } from "@/types/models";
 import { textStats, fmtDuration } from "@/lib/textStats";
-import { DESIGN_CHIPS, NONVERBAL_TAGS, appendDesignChip, type OmniMode } from "@/lib/omnivoice";
+import { DESIGN_CHIPS, NONVERBAL_TAGS, appendDesignChip, type OmniMode } from "@/lib/voiceModes";
 import { LanguageSelect } from "./LanguageSelect";
 
 interface Props {

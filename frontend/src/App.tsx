@@ -28,7 +28,7 @@ import { loadSample, loadTtsSample, type Sample, type TtsSample } from "@/lib/sa
 import { useProject } from "@/lib/store";
 import type { CachedAudio, Project, Speaker, SynthSpeaker } from "@/types/models";
 import { getDefaultCfgForEngine } from "@/lib/engineHints";
-import { effectiveMode, type OmniMode } from "@/lib/omnivoice";
+import { effectiveMode, type OmniMode } from "@/lib/voiceModes";
 import { TooNarrowBanner } from "@/components/TooNarrowBanner";
 import { useViewportWidth } from "@/hooks/useViewportWidth";
 import { showNarrowBanner } from "@/lib/layout";
