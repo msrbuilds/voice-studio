@@ -625,6 +625,9 @@ def cmd_update(args: argparse.Namespace) -> int:
         print("ERROR: git fetch failed.")
         return 1
     print(f"[2/4] Checking out {tag} …")
+    # Intentional detached HEAD: the updater pins to a release tag, not a branch.
+    # A detached HEAD is still "clean", so it doesn't trip the dirty-worktree guard
+    # on the next update. Don't "fix" this into a branch checkout.
     if _run(["git", "checkout", tag], cwd=REPO_ROOT) != 0:
         print(f"ERROR: could not check out {tag}.")
         return 1
