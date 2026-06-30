@@ -92,56 +92,63 @@ class JoinCache:
         """Store the joined WAV and record which segments went into it."""
         self.dir.mkdir(parents=True, exist_ok=True)
         wav_path = self._resolve_path(join_hash)
-        wav_path.write_bytes(wav_bytes)
         meta_path = wav_path.with_suffix(".json")
-        meta_path.write_text(
+        now = time.time()
+        # Atomic writes (shared with the parent cache) so a concurrent reader
+        # never sees a truncated join WAV.
+        self._inner._atomic_write_bytes(wav_path, wav_bytes)
+        self._inner._atomic_write_text(
+            meta_path,
             json.dumps(
                 {
                     "hash": join_hash,
                     "sample_rate": sample_rate,
                     "duration_sec": duration_sec,
                     "inference_ms": inference_ms,
-                    "created_at": time.time(),
+                    "created_at": now,
                 }
             ),
-            encoding="utf-8",
         )
-        self._inner._index[join_hash] = CacheEntry(
-            hash=join_hash,
-            wav_path=wav_path,
-            sample_rate=sample_rate,
-            duration_sec=duration_sec,
-            inference_ms=inference_ms,
-            created_at=time.time(),
-        )
-        if segment_hashes is not None:
-            self._manifest[join_hash] = list(segment_hashes)
-            self._save_manifest()
-        self._inner._maybe_evict()
+        # Mutate the shared index under the parent's lock.
+        with self._inner._lock:
+            self._inner._index[join_hash] = CacheEntry(
+                hash=join_hash,
+                wav_path=wav_path,
+                sample_rate=sample_rate,
+                duration_sec=duration_sec,
+                inference_ms=inference_ms,
+                created_at=now,
+            )
+            if segment_hashes is not None:
+                self._manifest[join_hash] = list(segment_hashes)
+                self._save_manifest()
+            self._inner._maybe_evict()
         log.info(
             "Join cache: wrote %s (%.1fs, %d bytes, %d segments)",
             join_hash, duration_sec, len(wav_bytes), len(segment_hashes or []),
         )
 
     def delete(self, join_hash: str) -> bool:
-        entry = self._inner._index.pop(join_hash, None)
-        if entry is None:
-            return False
-        for p in (entry.wav_path, entry.wav_path.with_suffix(".json")):
-            try:
-                p.unlink(missing_ok=True)
-            except OSError:
-                pass
-        self._manifest.pop(join_hash, None)
-        self._save_manifest()
-        return True
+        with self._inner._lock:
+            entry = self._inner._index.pop(join_hash, None)
+            if entry is None:
+                return False
+            for p in (entry.wav_path, entry.wav_path.with_suffix(".json")):
+                try:
+                    p.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            self._manifest.pop(join_hash, None)
+            self._save_manifest()
+            return True
 
     def clear(self) -> int:
         """Remove only entries that live under downloads/."""
-        to_remove = [
-            h for h, e in self._inner._index.items()
-            if str(e.wav_path).startswith(str(self.dir))
-        ]
+        with self._inner._lock:
+            to_remove = [
+                h for h, e in self._inner._index.items()
+                if str(e.wav_path).startswith(str(self.dir))
+            ]
         for h in to_remove:
             self.delete(h)
         return len(to_remove)

@@ -17,7 +17,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -79,9 +82,47 @@ class SynthCache:
         self._enabled = enabled
         self._max_entries = max(1, int(max_entries))
         self._index: dict[str, CacheEntry] = {}
+        # Reentrant so a lock-holding writer (put) can call _maybe_evict ->
+        # delete without deadlocking. Guards every read/write of _index and
+        # serializes writers; readers (GET /api/cache, playback) run on the
+        # FastAPI threadpool concurrently with synthesis on the executor thread.
+        self._lock = threading.RLock()
         if enabled:
             self._dir.mkdir(parents=True, exist_ok=True)
             self._load_index()
+
+    # ---- atomic file writes ----
+
+    def _atomic_write_bytes(self, path: Path, data: bytes) -> None:
+        """Write `data` to `path` atomically (unique temp file + os.replace).
+
+        A concurrent reader (or a crash mid-write) therefore sees either the
+        old complete file or the new one — never a truncated/0-byte file. The
+        temp lives in the same directory so os.replace stays on one filesystem.
+        """
+        tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_bytes(data)
+            # os.replace can transiently fail with PermissionError on Windows
+            # when a reader has the target briefly open (stat / playback). The
+            # rename itself is atomic; just retry the lock window.
+            for attempt in range(10):
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:
+                    if attempt == 9:
+                        raise
+                    time.sleep(0.02)
+        except BaseException:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+
+    def _atomic_write_text(self, path: Path, text: str) -> None:
+        self._atomic_write_bytes(path, text.encode("utf-8"))
 
     @property
     def enabled(self) -> bool:
@@ -92,7 +133,8 @@ class SynthCache:
         return self._dir
 
     def __len__(self) -> int:
-        return len(self._index)
+        with self._lock:
+            return len(self._index)
 
     # ---- I/O ----
 
@@ -101,42 +143,46 @@ class SynthCache:
         if not self._dir.exists():
             return
         loaded = 0
-        for meta in self._dir.glob("*.json"):
-            try:
-                data = json.loads(meta.read_text(encoding="utf-8"))
-                hash_id = data["hash"]
-                wav_path = self._dir / f"{hash_id}.wav"
-                if not wav_path.is_file():
-                    meta.unlink(missing_ok=True)
-                    continue
-                self._index[hash_id] = CacheEntry(
-                    hash=hash_id,
-                    wav_path=wav_path,
-                    sample_rate=int(data["sample_rate"]),
-                    duration_sec=float(data["duration_sec"]),
-                    inference_ms=int(data["inference_ms"]),
-                    created_at=float(data.get("created_at", meta.stat().st_mtime)),
-                    text=data.get("text"),
-                    voice=data.get("voice"),
-                )
-                loaded += 1
-            except Exception as exc:  # noqa: BLE001
-                log.warning("Failed to load cache meta %s: %s", meta, exc)
+        with self._lock:
+            for meta in self._dir.glob("*.json"):
+                try:
+                    data = json.loads(meta.read_text(encoding="utf-8"))
+                    hash_id = data["hash"]
+                    wav_path = self._dir / f"{hash_id}.wav"
+                    if not wav_path.is_file():
+                        meta.unlink(missing_ok=True)
+                        continue
+                    self._index[hash_id] = CacheEntry(
+                        hash=hash_id,
+                        wav_path=wav_path,
+                        sample_rate=int(data["sample_rate"]),
+                        duration_sec=float(data["duration_sec"]),
+                        inference_ms=int(data["inference_ms"]),
+                        created_at=float(data.get("created_at", meta.stat().st_mtime)),
+                        text=data.get("text"),
+                        voice=data.get("voice"),
+                    )
+                    loaded += 1
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Failed to load cache meta %s: %s", meta, exc)
         log.info("Synthesis cache: %d entries loaded from %s", loaded, self._dir)
 
     def get(self, content_hash: str) -> Optional[CacheEntry]:
         if not self._enabled:
             return None
-        entry = self._index.get(content_hash)
-        if entry is None:
-            return None
-        # Confirm files are still on disk
-        if not entry.wav_path.is_file() or not entry.wav_path.with_suffix(".wav").with_name(f"{content_hash}.json").is_file():
-            self._index.pop(content_hash, None)
-            return None
-        # Touch the entry to mark it recently used
-        entry.created_at = time.time()
-        return entry
+        with self._lock:
+            entry = self._index.get(content_hash)
+            if entry is None:
+                return None
+            # Confirm both files are still on disk (an external delete or a
+            # not-yet-loaded entry leaves a half-state).
+            meta_path = self._dir / f"{content_hash}.json"
+            if not entry.wav_path.is_file() or not meta_path.is_file():
+                self._index.pop(content_hash, None)
+                return None
+            # Touch the entry to mark it recently used.
+            entry.created_at = time.time()
+            return entry
 
     def put(
         self,
@@ -156,48 +202,45 @@ class SynthCache:
         """
         if not self._enabled:
             raise RuntimeError("cache is disabled")
-        old_entry = self._index.get(content_hash)
-        old_hash: str | None = None
-        # If we're overwriting an entry whose hash is the same as ours, it's
-        # a no-op (rare; could happen with a manual `put` call). Otherwise,
-        # the slot is being taken over by a different hash — but that's
-        # impossible with a dict keyed by hash, so `old_entry` is always
-        # either the same content or None. We still report it so the caller
-        # can detect overwrites.
-        if old_entry is not None and old_entry.hash != content_hash:
-            old_hash = old_entry.hash
+        with self._lock:
+            old_entry = self._index.get(content_hash)
+            old_hash: str | None = None
+            if old_entry is not None and old_entry.hash != content_hash:
+                old_hash = old_entry.hash
 
-        wav_path = self._dir / f"{content_hash}.wav"
-        meta_path = self._dir / f"{content_hash}.json"
-        wav_path.write_bytes(wav_bytes)
-        now = time.time()
-        meta_path.write_text(
-            json.dumps(
-                {
-                    "hash": content_hash,
-                    "sample_rate": sample_rate,
-                    "duration_sec": duration_sec,
-                    "inference_ms": inference_ms,
-                    "created_at": now,
-                    "text": text,
-                    "voice": voice,
-                }
-            ),
-            encoding="utf-8",
-        )
-        entry = CacheEntry(
-            hash=content_hash,
-            wav_path=wav_path,
-            sample_rate=sample_rate,
-            duration_sec=duration_sec,
-            inference_ms=inference_ms,
-            created_at=now,
-            text=text,
-            voice=voice,
-        )
-        self._index[content_hash] = entry
-        self._maybe_evict()
-        return entry, old_hash
+            wav_path = self._dir / f"{content_hash}.wav"
+            meta_path = self._dir / f"{content_hash}.json"
+            now = time.time()
+            # WAV first, then meta — both atomic so a concurrent reader never
+            # sees a truncated WAV nor meta-without-WAV.
+            self._atomic_write_bytes(wav_path, wav_bytes)
+            self._atomic_write_text(
+                meta_path,
+                json.dumps(
+                    {
+                        "hash": content_hash,
+                        "sample_rate": sample_rate,
+                        "duration_sec": duration_sec,
+                        "inference_ms": inference_ms,
+                        "created_at": now,
+                        "text": text,
+                        "voice": voice,
+                    }
+                ),
+            )
+            entry = CacheEntry(
+                hash=content_hash,
+                wav_path=wav_path,
+                sample_rate=sample_rate,
+                duration_sec=duration_sec,
+                inference_ms=inference_ms,
+                created_at=now,
+                text=text,
+                voice=voice,
+            )
+            self._index[content_hash] = entry
+            self._maybe_evict()
+            return entry, old_hash
 
     def put_replace(
         self,
@@ -216,88 +259,95 @@ class SynthCache:
         (e.g. text changed). The old file is removed from disk so the hash
         no longer collides. The new entry is stored under its own hash.
         """
-        if old_hash == new_content_hash:
-            return self._index[old_hash]
+        with self._lock:
+            if old_hash == new_content_hash:
+                return self._index[old_hash]
 
-        # Remove old entry's files
-        old_path = self._dir / f"{old_hash}.wav"
-        old_meta = self._dir / f"{old_hash}.json"
-        try:
-            old_path.unlink(missing_ok=True)
-            old_meta.unlink(missing_ok=True)
-        except OSError:
-            pass
-        self._index.pop(old_hash, None)
-
-        # Store new entry
-        wav_path = self._dir / f"{new_content_hash}.wav"
-        meta_path = self._dir / f"{new_content_hash}.json"
-        wav_path.write_bytes(wav_bytes)
-        now = time.time()
-        meta_path.write_text(
-            json.dumps(
-                {
-                    "hash": new_content_hash,
-                    "sample_rate": sample_rate,
-                    "duration_sec": duration_sec,
-                    "inference_ms": inference_ms,
-                    "created_at": now,
-                    "text": text,
-                    "voice": voice,
-                }
-            ),
-            encoding="utf-8",
-        )
-        entry = CacheEntry(
-            hash=new_content_hash,
-            wav_path=wav_path,
-            sample_rate=sample_rate,
-            duration_sec=duration_sec,
-            inference_ms=inference_ms,
-            created_at=now,
-            text=text,
-            voice=voice,
-        )
-        self._index[new_content_hash] = entry
-        self._maybe_evict()
-        return entry
-
-    def delete(self, content_hash: str) -> bool:
-        entry = self._index.pop(content_hash, None)
-        if entry is None:
-            return False
-        for p in (entry.wav_path, entry.wav_path.with_suffix(".json")):
+            # Remove old entry's files
+            old_path = self._dir / f"{old_hash}.wav"
+            old_meta = self._dir / f"{old_hash}.json"
             try:
-                p.unlink(missing_ok=True)
+                old_path.unlink(missing_ok=True)
+                old_meta.unlink(missing_ok=True)
             except OSError:
                 pass
-        return True
+            self._index.pop(old_hash, None)
 
-    def clear(self) -> int:
-        """Remove all entries. Returns how many were removed."""
-        count = len(self._index)
-        for entry in list(self._index.values()):
+            # Store new entry
+            wav_path = self._dir / f"{new_content_hash}.wav"
+            meta_path = self._dir / f"{new_content_hash}.json"
+            now = time.time()
+            self._atomic_write_bytes(wav_path, wav_bytes)
+            self._atomic_write_text(
+                meta_path,
+                json.dumps(
+                    {
+                        "hash": new_content_hash,
+                        "sample_rate": sample_rate,
+                        "duration_sec": duration_sec,
+                        "inference_ms": inference_ms,
+                        "created_at": now,
+                        "text": text,
+                        "voice": voice,
+                    }
+                ),
+            )
+            entry = CacheEntry(
+                hash=new_content_hash,
+                wav_path=wav_path,
+                sample_rate=sample_rate,
+                duration_sec=duration_sec,
+                inference_ms=inference_ms,
+                created_at=now,
+                text=text,
+                voice=voice,
+            )
+            self._index[new_content_hash] = entry
+            self._maybe_evict()
+            return entry
+
+    def delete(self, content_hash: str) -> bool:
+        with self._lock:
+            entry = self._index.pop(content_hash, None)
+            if entry is None:
+                return False
             for p in (entry.wav_path, entry.wav_path.with_suffix(".json")):
                 try:
                     p.unlink(missing_ok=True)
                 except OSError:
                     pass
-        self._index.clear()
-        return count
+            return True
+
+    def clear(self) -> int:
+        """Remove all entries. Returns how many were removed."""
+        with self._lock:
+            count = len(self._index)
+            for entry in list(self._index.values()):
+                for p in (entry.wav_path, entry.wav_path.with_suffix(".json")):
+                    try:
+                        p.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            self._index.clear()
+            return count
 
     def list(self) -> list[CacheEntry]:
         """All entries, newest first."""
-        return sorted(self._index.values(), key=lambda e: e.created_at, reverse=True)
+        with self._lock:
+            return sorted(self._index.values(), key=lambda e: e.created_at, reverse=True)
 
     # ---- maintenance ----
 
     def _maybe_evict(self) -> None:
-        if len(self._index) <= self._max_entries:
-            return
-        # Evict the oldest half
-        sorted_entries = sorted(self._index.values(), key=lambda e: e.created_at)
-        keep = self._max_entries // 2
-        to_remove = sorted_entries[: max(0, len(sorted_entries) - keep)]
-        for entry in to_remove:
-            self.delete(entry.hash)
-        log.info("Evicted %d cache entries (cap=%d)", len(to_remove), self._max_entries)
+        # Always invoked while the lock is held (put/put_replace); the RLock
+        # makes the nested self.delete() acquisitions safe.
+        with self._lock:
+            if len(self._index) <= self._max_entries:
+                return
+            # Evict the oldest half
+            sorted_entries = sorted(self._index.values(), key=lambda e: e.created_at)
+            keep = self._max_entries // 2
+            to_remove = sorted_entries[: max(0, len(sorted_entries) - keep)]
+            for entry in to_remove:
+                self.delete(entry.hash)
+            log.info("Evicted %d cache entries (cap=%d)", len(to_remove), self._max_entries)
