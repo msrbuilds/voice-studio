@@ -766,7 +766,9 @@ export default function App() {
               showLanguage={engineLanguages.length > 0}
               language={pm.tts.language}
               onLanguageChange={pm.setTtsLanguage}
-              isOmni={activeEngine === "omnivoice"}
+              supportsVoiceModes={supportsVoiceModes}
+              supportsStyleClone={activeEngineInfo?.supports_style_clone ?? false}
+              activeEngine={activeEngine}
               omniMode={effectiveMode({ voice: pm.tts.voiceId ?? "", omnivoiceMode: pm.tts.omnivoiceMode })}
               onOmniModeChange={pm.setTtsOmniMode}
               voiceDesign={pm.tts.voiceDesign ?? ""}

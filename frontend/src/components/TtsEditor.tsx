@@ -15,8 +15,11 @@ interface Props {
   showLanguage: boolean;          // false for built-in-voice engines (filter handled in library)
   language: string | null;
   onLanguageChange: (code: string) => void;
-  // OmniVoice only: per-buffer Clone/Design/Auto mode + design prompt.
-  isOmni: boolean;
+  // Engines with Clone/Design/Auto voice modes (OmniVoice, VoxCPM). `activeEngine`
+  // drives engine-specific content (OmniVoice chips/tags vs VoxCPM placeholders).
+  supportsVoiceModes: boolean;
+  supportsStyleClone: boolean;
+  activeEngine: string | null;
   omniMode: OmniMode;
   onOmniModeChange: (m: OmniMode) => void;
   voiceDesign: string;
@@ -31,7 +34,7 @@ interface Props {
 export function TtsEditor(props: Props) {
   const {
     isDark, text, onTextChange, activeVoice, languages, showLanguage,
-    language, onLanguageChange, isOmni, omniMode, onOmniModeChange,
+    language, onLanguageChange, supportsVoiceModes, supportsStyleClone, activeEngine, omniMode, onOmniModeChange,
     voiceDesign, onVoiceDesignChange, busy, isGenerating, isPlaying, onGenerate, onPlay,
   } = props;
   const stats = textStats(text);
@@ -70,7 +73,7 @@ export function TtsEditor(props: Props) {
 
   // Show the "Voice: X" note for any non-OmniVoice engine, and for OmniVoice
   // only in clone mode (design/auto carry no reference voice).
-  const showVoiceNote = !isOmni || omniMode === "clone";
+  const showVoiceNote = !supportsVoiceModes || omniMode === "clone";
 
   const segBtn = (m: OmniMode, label: string) => (
     <button
@@ -99,7 +102,7 @@ export function TtsEditor(props: Props) {
       />
 
       {/* OmniVoice inline non-verbal sounds — insert a tag at the cursor */}
-      {isOmni && (
+      {activeEngine === "omnivoice" && (
         <div className="space-y-1.5">
           <div className={`text-xs ${sub}`}>
             Non-verbal sounds — click to insert at the cursor
@@ -124,7 +127,7 @@ export function TtsEditor(props: Props) {
       )}
 
       {/* OmniVoice voice mode: Clone / Design / Auto */}
-      {isOmni && (
+      {supportsVoiceModes && (
         <div className={`rounded-xl border p-3 space-y-2 ${isDark ? "border-zinc-800 bg-zinc-900/50" : "border-gray-200 bg-gray-50"}`}>
           <div className="flex gap-1.5">
             {segBtn("clone", "Clone")}
@@ -132,10 +135,21 @@ export function TtsEditor(props: Props) {
             {segBtn("auto", "Auto")}
           </div>
           {omniMode === "clone" && (
-            <p className={`text-xs ${sub}`}>
-              Clones the voice selected in the library:{" "}
-              <span className="text-orange-400">{activeVoice ? activeVoice.name : "none selected"}</span>
-            </p>
+            <div className="space-y-1.5">
+              <p className={`text-xs ${sub}`}>
+                Clones the voice selected in the library:{" "}
+                <span className="text-orange-400">{activeVoice ? activeVoice.name : "none selected"}</span>
+              </p>
+              {supportsStyleClone && (
+                <input
+                  type="text"
+                  value={voiceDesign}
+                  onChange={(e) => onVoiceDesignChange(e.target.value)}
+                  placeholder="Style (optional) — e.g. cheerful, slightly faster"
+                  className={`w-full border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-orange-500 ${selectBg}`}
+                />
+              )}
+            </div>
           )}
           {omniMode === "design" && (
             <div className="space-y-1.5">
@@ -143,29 +157,35 @@ export function TtsEditor(props: Props) {
                 type="text"
                 value={voiceDesign}
                 onChange={(e) => onVoiceDesignChange(e.target.value)}
-                placeholder="e.g. female, low pitch, british accent"
+                placeholder={activeEngine === "voxcpm" ? "e.g. a young woman, gentle and sweet" : "e.g. female, low pitch, british accent"}
                 className={`w-full border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-orange-500 ${selectBg}`}
               />
-              <div className="flex flex-wrap gap-1">
-                {DESIGN_CHIPS.map((chip) => (
-                  <button
-                    key={chip}
-                    type="button"
-                    onClick={() => onVoiceDesignChange(appendDesignChip(voiceDesign, chip))}
-                    className={`px-1.5 py-0.5 text-[11px] rounded border transition-colors ${
-                      isDark
-                        ? "border-zinc-700 text-zinc-400 hover:border-orange-500 hover:text-orange-300"
-                        : "border-gray-300 text-gray-600 hover:border-orange-500 hover:text-orange-600"
-                    } ${focusRing}`}
-                  >
-                    {chip}
-                  </button>
-                ))}
-              </div>
+              {activeEngine === "omnivoice" && (
+                <div className="flex flex-wrap gap-1">
+                  {DESIGN_CHIPS.map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => onVoiceDesignChange(appendDesignChip(voiceDesign, chip))}
+                      className={`px-1.5 py-0.5 text-[11px] rounded border transition-colors ${
+                        isDark
+                          ? "border-zinc-700 text-zinc-400 hover:border-orange-500 hover:text-orange-300"
+                          : "border-gray-300 text-gray-600 hover:border-orange-500 hover:text-orange-600"
+                      } ${focusRing}`}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {omniMode === "auto" && (
-            <p className={`text-xs italic ${sub}`}>OmniVoice will invent a voice for this text.</p>
+            <p className={`text-xs italic ${sub}`}>
+              {activeEngine === "voxcpm"
+                ? "VoxCPM will design a fresh voice for this text."
+                : "OmniVoice will invent a voice for this text."}
+            </p>
           )}
         </div>
       )}
