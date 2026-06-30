@@ -75,6 +75,10 @@ def _make_client(tmp_voices: Path, tmp_uploads: Path) -> TestClient:
         device="cpu",
         voices_dir=tmp_voices,
         uploads_dir=tmp_uploads,
+        # Isolate the cache: these tests synthesize into and CLEAR the cache.
+        # Without this they would wipe the real backend/cache/ (conftest also
+        # guards this globally; explicit here keeps the helper self-contained).
+        cache_dir=tmp_voices.parent / "cache",
         log_level="warning",
     )
     app = create_app(settings)
@@ -203,10 +207,6 @@ def test_synthesize_happy_path_with_stub(tmp_path):
             "speakers": [{"name": "Alice", "voice": "en-test"}],
         },
     )
-    with open("debug.log", "a") as f:
-        f.write(f"\n=== DEBUG: r1 headers === {dict(r.headers)}\n")
-        f.write(f"=== DEBUG: r2 status === {r2.status_code} headers === {dict(r2.headers)}\n")
-        f.write(f"=== DEBUG: r2 body === {r2.text[:500] if r2.status_code != 200 else '(wav)'}\n")
     assert r2.status_code == 200
     assert r2.headers.get("X-Cache") == "hit"
     assert r2.headers["X-Cache-Hash"] == r.headers["X-Cache-Hash"]

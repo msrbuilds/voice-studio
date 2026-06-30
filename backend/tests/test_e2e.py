@@ -65,6 +65,8 @@ def _build_app():
         device="cpu",
         voices_dir=tmp / "v",
         uploads_dir=tmp / "u",
+        # Isolate the cache so the e2e run never touches the real backend/cache/.
+        cache_dir=tmp / "cache",
         log_level="warning",
     )
     return create_app(settings), tmp
