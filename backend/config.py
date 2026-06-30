@@ -21,9 +21,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Active TTS engine. "vibevoice" (default), "kokoro", or "chatterbox".
-    # The user's last choice is persisted in backend/.last_engine and
-    # overrides this on next start.
+    # Active TTS engine. "vibevoice" (default), "kokoro", "chatterbox",
+    # "omnivoice", or "voxcpm". The user's last choice is persisted in
+    # backend/.last_engine and overrides this on next start.
     default_engine: Literal["vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm"] = "vibevoice"
 
     # Model
