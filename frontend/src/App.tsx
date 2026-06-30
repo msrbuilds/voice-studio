@@ -41,26 +41,31 @@ function isSegmentCached(
   segment: { id: string; text: string; speakerId: string | null },
   cache: Record<string, CachedAudio>,
   speakers: Speaker[],
-  activeEngine: string | null,
+  supportsVoiceModes: boolean,
 ): { cached: boolean; voice: string | null; signature: string } {
   const entry = cache[segment.id];
   if (!entry) return { cached: false, voice: null, signature: "" };
   const speaker = speakers.find((s) => s.id === segment.speakerId);
   if (!speaker) return { cached: false, voice: null, signature: "" };
 
-  if (activeEngine === "omnivoice") {
+  if (supportsVoiceModes) {
     const mode = effectiveMode(speaker);
     if (mode === "clone") {
       const voice = speaker.voice;
       if (!voice) return { cached: false, voice: null, signature: "" };
-      const signature = `${segment.text}::${voice}::clone`;
+      const style = (speaker.voiceDesign ?? "").trim();
+      const signature = `${segment.text}::${voice}::clone::${style}`;
       return {
-        cached: entry.text === segment.text && entry.voice === voice && entry.mode === "clone",
+        cached:
+          entry.text === segment.text &&
+          entry.voice === voice &&
+          entry.mode === "clone" &&
+          (entry.instruct ?? "") === style,
         voice,
         signature,
       };
     }
-    const design = mode === "design" ? (speaker.voiceDesign ?? "") : "";
+    const design = mode === "design" ? (speaker.voiceDesign ?? "").trim() : "";
     const signature = `${segment.text}::${mode}::${design}`;
     return {
       cached:
@@ -289,7 +294,7 @@ export default function App() {
       try {
         const seg = project.segments.find((s) => s.id === segmentId);
         if (!seg) return;
-        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, activeEngine);
+        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes);
         if (!cached) {
           await generateFor(segmentId);
         }
@@ -346,7 +351,7 @@ export default function App() {
         setCurrentIndex(i);
         setPlayingId(seg.id);
         try {
-          const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, activeEngine);
+          const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes);
           if (!cached) {
             setGeneratingId(seg.id);
             try {
@@ -421,7 +426,7 @@ export default function App() {
       for (let i = 0; i < valid.length; i++) {
         const seg = valid[i]!;
         // Skip already-cached segments
-        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, activeEngine);
+        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes);
         if (cached) continue;
 
         setExportProgress(`Segment ${i + 1}/${valid.length}`);
@@ -661,10 +666,10 @@ export default function App() {
   const cachedCount = useMemo(
     () =>
       project.segments.filter((s) => {
-        const { cached } = isSegmentCached(s, project.audioCache, project.speakers, activeEngine);
+        const { cached } = isSegmentCached(s, project.audioCache, project.speakers, supportsVoiceModes);
         return cached;
       }).length,
-    [project.segments, project.audioCache, project.speakers, activeEngine],
+    [project.segments, project.audioCache, project.speakers, supportsVoiceModes],
   );
   const busy = isPlayingAll || isExporting || generatingId !== null;
 
@@ -828,7 +833,7 @@ export default function App() {
 
               <div className="space-y-4">
                 {project.segments.map((segment, index) => {
-                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, activeEngine);
+                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, supportsVoiceModes);
                   return (
                     <SegmentCard
                       key={segment.id}
