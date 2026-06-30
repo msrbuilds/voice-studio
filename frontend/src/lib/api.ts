@@ -275,6 +275,11 @@ export async function synthesizeWav(
     exaggeration?: number | null;
     languageId?: string | null;
     inferenceSteps?: number | null;
+    temperature?: number | null;
+    topP?: number | null;
+    topK?: number | null;
+    repetitionPenalty?: number | null;
+    seed?: number | null;
   } = {},
 ): Promise<{ audioData: ArrayBuffer; sampleRate: number; durationSec: number; inferenceMs: number; cacheHit: boolean; cacheHash: string | null }> {
   const res = await fetch(`${API_BASE}/synthesize`, {
@@ -288,6 +293,11 @@ export async function synthesizeWav(
       ...(options.exaggeration != null ? { exaggeration: options.exaggeration } : {}),
       ...(options.languageId ? { language_id: options.languageId } : {}),
       ...(options.inferenceSteps != null ? { inference_steps: options.inferenceSteps } : {}),
+      ...(options.temperature != null ? { temperature: options.temperature } : {}),
+      ...(options.topP != null ? { top_p: options.topP } : {}),
+      ...(options.topK != null ? { top_k: options.topK } : {}),
+      ...(options.repetitionPenalty != null ? { repetition_penalty: options.repetitionPenalty } : {}),
+      ...(options.seed != null ? { seed: options.seed } : {}),
       ...(options.forceRegenerate ? { force_regenerate: true } : {}),
     }),
   });

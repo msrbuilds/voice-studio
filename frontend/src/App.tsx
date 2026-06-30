@@ -38,6 +38,11 @@ const TTS_SEG_ID = "__tts__";
 // VoxCPM diffusion quality → inference_timesteps. Higher = better quality, slower.
 const QUALITY_TIMESTEPS = { fast: 5, balanced: 10, high: 25 } as const;
 
+// Qwen3-TTS CustomVoice advanced sampling defaults. Threaded through synth requests
+// when the Qwen engine is active; persisted in localStorage (vs.qwen.params).
+const QWEN_DEFAULTS = { temperature: 0.9, topP: 0.9, topK: 50, repetitionPenalty: 1.1, seed: null as number | null };
+type QwenParams = typeof QWEN_DEFAULTS;
+
 type Theme = "light" | "dark";
 
 function isSegmentCached(
@@ -111,6 +116,7 @@ export default function App() {
   } = useEngine();
   const activeEngineInfo = engines.find((e) => e.name === activeEngine) ?? null;
   const supportsVoiceModes = activeEngineInfo?.supports_voice_modes ?? false;
+  const supportsStylePrompt = activeEngineInfo?.supports_style_prompt ?? false;
   const supportsVoiceCloning = activeEngineInfo?.supports_voice_cloning ?? true;
   const engineLanguages = activeEngineInfo?.languages ?? [];
   // Chatterbox: language is a synth param (cloning engine with languages)
@@ -134,6 +140,28 @@ export default function App() {
     setQuality(q);
     localStorage.setItem("vs.voxcpm.quality", q);
   };
+  // Qwen3-TTS CustomVoice only — advanced sampling params. Ignored by other engines.
+  const [qwenParams, setQwenParams] = useState<QwenParams>(() => {
+    try {
+      const raw = localStorage.getItem("vs.qwen.params");
+      if (raw) return { ...QWEN_DEFAULTS, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return QWEN_DEFAULTS;
+  });
+  // Note: onQwenParamsChange (localStorage save) lands with the ControlPanel
+  // advanced panel in Task 14, which is its only consumer. setQwenParams is the
+  // state setter; qwenSynthOpts (below) is the only current reader of qwenParams.
+  void setQwenParams;
+  const qwenSynthOpts =
+    activeEngine === "qwen"
+      ? {
+          temperature: qwenParams.temperature,
+          topP: qwenParams.topP,
+          topK: qwenParams.topK,
+          repetitionPenalty: qwenParams.repetitionPenalty,
+          seed: qwenParams.seed,
+        }
+      : {};
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
@@ -276,6 +304,7 @@ export default function App() {
           cfgWeight: isChatterbox ? cfgScale : null,
           exaggeration: isChatterbox ? exaggeration : null,
           ...(activeEngine === "voxcpm" ? { inferenceSteps: QUALITY_TIMESTEPS[quality] } : {}),
+          ...qwenSynthOpts,
         });
         project.cacheAudio(segmentId, {
           audioData,
@@ -292,7 +321,7 @@ export default function App() {
         setGeneratingId(null);
       }
     },
-    [project, showError, cfgScale, exaggeration, activeEngine, quality],
+    [project, showError, cfgScale, exaggeration, activeEngine, quality, qwenParams],
   );
 
   // ---- playback ----
@@ -500,6 +529,7 @@ export default function App() {
         exaggeration: isChatterbox ? exaggeration : null,
         languageId: isCloningLangEngine ? (pm.tts.language ?? undefined) : undefined,
         ...(activeEngine === "voxcpm" ? { inferenceSteps: QUALITY_TIMESTEPS[quality] } : {}),
+        ...qwenSynthOpts,
       });
       project.cacheAudio(TTS_SEG_ID, {
         audioData,
@@ -512,7 +542,7 @@ export default function App() {
       });
     } catch (err) { showError(err, "Synthesis failed"); }
     finally { setGeneratingId(null); }
-  }, [pm.tts, displayedVoices, activeEngine, cfgScale, exaggeration, isCloningLangEngine, project, showError, quality]);
+  }, [pm.tts, displayedVoices, activeEngine, cfgScale, exaggeration, isCloningLangEngine, project, showError, quality, qwenParams]);
 
   const playTts = useCallback(async () => {
     // Toggle: if the TTS clip is already playing, this acts as Stop.
@@ -793,6 +823,7 @@ export default function App() {
               onLanguageChange={pm.setTtsLanguage}
               supportsVoiceModes={supportsVoiceModes}
               supportsStyleClone={activeEngineInfo?.supports_style_clone ?? false}
+              supportsStylePrompt={supportsStylePrompt}
               activeEngine={activeEngine}
               omniMode={effectiveMode({ voice: pm.tts.voiceId ?? "", omnivoiceMode: pm.tts.omnivoiceMode })}
               onOmniModeChange={pm.setTtsOmniMode}
@@ -851,6 +882,7 @@ export default function App() {
                   activeEngine={activeEngine}
                   supportsVoiceModes={activeEngineInfo?.supports_voice_modes ?? false}
                   supportsStyleClone={activeEngineInfo?.supports_style_clone ?? false}
+                  supportsStylePrompt={supportsStylePrompt}
                   onAddSpeaker={project.addSpeaker}
                   onUpdateSpeaker={project.updateSpeaker}
                   onRemoveSpeaker={project.removeSpeaker}
