@@ -40,3 +40,14 @@ def test_cache_key_folds_qwen_quality():
 def test_cache_key_qwen_omitted_when_absent():
     # No qwen_gen → unchanged key (no churn for other engines)
     assert _vck_qwen("Vivian", None, None, None) == "Vivian"
+
+
+def test_cache_key_folds_style_prompt_without_voice_mode():
+    # Qwen (supports_style_prompt) sends an always-available style with
+    # voice_mode None. Different styles must land in different slots.
+    happy = _vck_qwen("Vivian", None, "cheerful", None)
+    sad = _vck_qwen("Vivian", None, "somber", None)
+    none = _vck_qwen("Vivian", None, None, None)
+    assert happy != sad
+    assert happy != none and sad != none
+    assert none == "Vivian"  # absent style → no churn for other engines

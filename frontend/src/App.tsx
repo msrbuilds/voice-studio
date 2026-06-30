@@ -50,6 +50,7 @@ function isSegmentCached(
   cache: Record<string, CachedAudio>,
   speakers: Speaker[],
   supportsVoiceModes: boolean,
+  supportsStylePrompt: boolean,
   effectiveQuality: "fast" | "balanced" | "high" | undefined,
   effectiveGenSig: string | undefined,
 ): { cached: boolean; voice: string | null; signature: string } {
@@ -93,9 +94,18 @@ function isSegmentCached(
 
   const voice = speaker.voice;
   if (!voice) return { cached: false, voice: null, signature: "" };
-  const signature = `${segment.text}::${voice}::${segment.speakerId ?? ""}::${effectiveQuality ?? ""}::${effectiveGenSig ?? ""}`;
+  // Qwen (supports_style_prompt) carries an always-available style with no
+  // voice mode; fold it so changing the style re-synthesizes. Empty for
+  // engines without it → identical to prior behavior.
+  const style = supportsStylePrompt ? (speaker.voiceDesign ?? "").trim() : "";
+  const signature = `${segment.text}::${voice}::${segment.speakerId ?? ""}::${effectiveQuality ?? ""}::${effectiveGenSig ?? ""}::${style}`;
   return {
-    cached: entry.text === segment.text && entry.voice === voice && entry.quality === effectiveQuality && entry.genSig === effectiveGenSig,
+    cached:
+      entry.text === segment.text &&
+      entry.voice === voice &&
+      entry.quality === effectiveQuality &&
+      entry.genSig === effectiveGenSig &&
+      (entry.instruct ?? "") === style,
     voice,
     signature,
   };
@@ -352,7 +362,7 @@ export default function App() {
       try {
         const seg = project.segments.find((s) => s.id === segmentId);
         if (!seg) return;
-        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
+        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
         if (!cached) {
           await generateFor(segmentId);
         }
@@ -363,7 +373,7 @@ export default function App() {
         setPlayingId((id) => (id === segmentId ? null : id));
       }
     },
-    [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, quality, qwenGenSig],
+    [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, supportsStylePrompt, quality, qwenGenSig],
   );
 
   const handleStop = useCallback(() => {
@@ -409,7 +419,7 @@ export default function App() {
         setCurrentIndex(i);
         setPlayingId(seg.id);
         try {
-          const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
+          const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
           if (!cached) {
             setGeneratingId(seg.id);
             try {
@@ -428,7 +438,7 @@ export default function App() {
       setCurrentIndex(-1);
       setPlayingId(null);
     }
-  }, [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, quality, qwenGenSig]);
+  }, [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, supportsStylePrompt, quality, qwenGenSig]);
 
   const handleStopAll = useCallback(() => {
     stopAllRef.current = true;
@@ -484,7 +494,7 @@ export default function App() {
       for (let i = 0; i < valid.length; i++) {
         const seg = valid[i]!;
         // Skip already-cached segments
-        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
+        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
         if (cached) continue;
 
         setExportProgress(`Segment ${i + 1}/${valid.length}`);
@@ -501,7 +511,7 @@ export default function App() {
       setIsExporting(false);
       setExportProgress("");
     }
-  }, [project, generateFor, showError, activeEngine, supportsVoiceModes, quality, qwenGenSig]);
+  }, [project, generateFor, showError, activeEngine, supportsVoiceModes, supportsStylePrompt, quality, qwenGenSig]);
 
   // ---- TTS mode generation ----
 
@@ -742,10 +752,10 @@ export default function App() {
   const cachedCount = useMemo(
     () =>
       project.segments.filter((s) => {
-        const { cached } = isSegmentCached(s, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
+        const { cached } = isSegmentCached(s, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
         return cached;
       }).length,
-    [project.segments, project.audioCache, project.speakers, supportsVoiceModes, activeEngine, quality, qwenGenSig],
+    [project.segments, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine, quality, qwenGenSig],
   );
   const busy = isPlayingAll || isExporting || generatingId !== null;
 
@@ -913,7 +923,7 @@ export default function App() {
 
               <div className="space-y-4">
                 {project.segments.map((segment, index) => {
-                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
+                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
                   return (
                     <SegmentCard
                       key={segment.id}

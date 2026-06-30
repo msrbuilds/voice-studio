@@ -528,8 +528,11 @@ def _voice_cache_key(
         base = voice_id
     if voice_mode:
         base += f"|vm={voice_mode}"
-        if instruct:
-            base += f"|in={instruct}"
+    # Fold the style/instruct prompt independent of voice_mode: Qwen
+    # (supports_style_prompt) sends an always-available style with voice_mode
+    # None, so gating this on voice_mode would let different styles collide.
+    if instruct:
+        base += f"|in={instruct}"
     if reference_text:
         digest = hashlib.sha256(reference_text.encode("utf-8")).hexdigest()[:8]
         base += f"|rt={digest}"
