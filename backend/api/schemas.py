@@ -95,6 +95,7 @@ class EngineInfoModel(BaseModel):
     active: bool = False
     supports_voice_modes: bool = False
     supports_style_clone: bool = False
+    supports_style_prompt: bool = False
 
 
 # Forward-ref: ConfigResponse references EngineInfoModel.
@@ -140,6 +141,12 @@ class SynthRequestBody(BaseModel):
     # omitted, Chatterbox uses the voice's `language` metadata or the
     # server's `chatterbox_default_language_id` setting.
     language_id: str | None = None
+    # --- Qwen3-TTS CustomVoice only (other engines ignore) ---
+    temperature: float | None = Field(default=None, ge=0.1, le=2.0)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    top_k: int | None = Field(default=None, ge=0, le=200)
+    repetition_penalty: float | None = Field(default=None, ge=1.0, le=2.0)
+    seed: int | None = Field(default=None, ge=0)
 
 
 class SynthBase64Response(BaseModel):

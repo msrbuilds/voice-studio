@@ -69,6 +69,7 @@ export interface EngineInfo {
   languages: EngineLanguage[];
   supports_voice_modes: boolean;
   supports_style_clone: boolean;
+  supports_style_prompt: boolean;
 }
 
 export interface InstallStatus {
@@ -164,6 +165,9 @@ export interface CachedAudio {
   // cache badge re-synths when the user changes Quality. Undefined for engines
   // that don't use it.
   quality?: "fast" | "balanced" | "high";
+  // Engine-specific generation signature (Qwen advanced params) — re-synth
+  // when it changes. Undefined for engines that don't use it.
+  genSig?: string;
 }
 
 export interface Project {

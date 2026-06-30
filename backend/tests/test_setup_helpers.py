@@ -8,6 +8,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from tools import envdetect  # noqa: E402
 from tools.envdetect import detect_voxcpm_cuda_tag, cuda_version_to_voxcpm_tag  # noqa: E402
+from tools.envdetect import detect_qwen_cuda_tag, cuda_version_to_qwen_tag  # noqa: E402
 
 _SAMPLE_SMI = """
 +-----------------------------------------------------------------------------+
@@ -68,7 +69,7 @@ def test_parse_model_selection_rejects_unknown():
 
 
 def test_catalog_has_expected_engines():
-    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm"}
+    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen"}
     assert dm.MODEL_CATALOG["kokoro"]["repo_id"] == "hexgrad/Kokoro-82M"
     assert dm.MODEL_CATALOG["omnivoice"]["repo_id"] == "k2-fsa/OmniVoice"
 
@@ -246,3 +247,15 @@ def test_python_supported_for_voxcpm():
     assert studio._python_supported_for_voxcpm((3, 10)) is True   # lower-inclusive boundary
     assert studio._python_supported_for_voxcpm((4, 0)) is False   # wrong major version
     assert studio._python_supported_for_voxcpm((4, 11)) is False
+
+
+def test_cuda_version_to_qwen_tag():
+    assert cuda_version_to_qwen_tag("13.0") == "cu128"
+    assert cuda_version_to_qwen_tag("12.8") == "cu128"
+    assert cuda_version_to_qwen_tag("12.6") == "cu126"
+    assert cuda_version_to_qwen_tag("12.4") is None
+    assert cuda_version_to_qwen_tag(None) is None
+
+
+def test_detect_qwen_cuda_tag_uses_runner():
+    assert detect_qwen_cuda_tag(runner=lambda: "CUDA Version: 12.8") == "cu128"

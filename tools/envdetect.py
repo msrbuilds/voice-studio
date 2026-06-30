@@ -122,3 +122,21 @@ def detect_voxcpm_cuda_tag(runner=None) -> str | None:
     if text is None:
         return None
     return cuda_version_to_voxcpm_tag(parse_nvidia_smi_cuda_version(text))
+
+
+def cuda_version_to_qwen_tag(version: str | None) -> str | None:
+    """Map a CUDA runtime version to a torch wheel tag for Qwen3-TTS.
+
+    qwen-tts needs a modern torch (transformers==4.57.3); we install a torch
+    2.8 CUDA build (cu126/cu128, same as OmniVoice/VoxCPM). Below 12.6 → CPU.
+    """
+    return cuda_version_to_omnivoice_tag(version)
+
+
+def detect_qwen_cuda_tag(runner=None) -> str | None:
+    """Detect the torch CUDA wheel tag for Qwen. `runner` is injectable."""
+    run = runner or _run_nvidia_smi
+    text = run()
+    if text is None:
+        return None
+    return cuda_version_to_qwen_tag(parse_nvidia_smi_cuda_version(text))

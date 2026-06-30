@@ -38,6 +38,11 @@ const TTS_SEG_ID = "__tts__";
 // VoxCPM diffusion quality → inference_timesteps. Higher = better quality, slower.
 const QUALITY_TIMESTEPS = { fast: 5, balanced: 10, high: 25 } as const;
 
+// Qwen3-TTS CustomVoice advanced sampling defaults. Threaded through synth requests
+// when the Qwen engine is active; persisted in localStorage (vs.qwen.params).
+const QWEN_DEFAULTS = { temperature: 0.9, topP: 0.9, topK: 50, repetitionPenalty: 1.1, seed: null as number | null };
+type QwenParams = typeof QWEN_DEFAULTS;
+
 type Theme = "light" | "dark";
 
 function isSegmentCached(
@@ -45,7 +50,9 @@ function isSegmentCached(
   cache: Record<string, CachedAudio>,
   speakers: Speaker[],
   supportsVoiceModes: boolean,
+  supportsStylePrompt: boolean,
   effectiveQuality: "fast" | "balanced" | "high" | undefined,
+  effectiveGenSig: string | undefined,
 ): { cached: boolean; voice: string | null; signature: string } {
   const entry = cache[segment.id];
   if (!entry) return { cached: false, voice: null, signature: "" };
@@ -58,26 +65,28 @@ function isSegmentCached(
       const voice = speaker.voice;
       if (!voice) return { cached: false, voice: null, signature: "" };
       const style = (speaker.voiceDesign ?? "").trim();
-      const signature = `${segment.text}::${voice}::clone::${style}::${effectiveQuality ?? ""}`;
+      const signature = `${segment.text}::${voice}::clone::${style}::${effectiveQuality ?? ""}::${effectiveGenSig ?? ""}`;
       return {
         cached:
           entry.text === segment.text &&
           entry.voice === voice &&
           entry.mode === "clone" &&
           (entry.instruct ?? "") === style &&
-          entry.quality === effectiveQuality,
+          entry.quality === effectiveQuality &&
+          entry.genSig === effectiveGenSig,
         voice,
         signature,
       };
     }
     const design = mode === "design" ? (speaker.voiceDesign ?? "").trim() : "";
-    const signature = `${segment.text}::${mode}::${design}::${effectiveQuality ?? ""}`;
+    const signature = `${segment.text}::${mode}::${design}::${effectiveQuality ?? ""}::${effectiveGenSig ?? ""}`;
     return {
       cached:
         entry.text === segment.text &&
         entry.mode === mode &&
         (entry.instruct ?? "") === design &&
-        entry.quality === effectiveQuality,
+        entry.quality === effectiveQuality &&
+        entry.genSig === effectiveGenSig,
       voice: null,
       signature,
     };
@@ -85,9 +94,18 @@ function isSegmentCached(
 
   const voice = speaker.voice;
   if (!voice) return { cached: false, voice: null, signature: "" };
-  const signature = `${segment.text}::${voice}::${segment.speakerId ?? ""}::${effectiveQuality ?? ""}`;
+  // Qwen (supports_style_prompt) carries an always-available style with no
+  // voice mode; fold it so changing the style re-synthesizes. Empty for
+  // engines without it → identical to prior behavior.
+  const style = supportsStylePrompt ? (speaker.voiceDesign ?? "").trim() : "";
+  const signature = `${segment.text}::${voice}::${segment.speakerId ?? ""}::${effectiveQuality ?? ""}::${effectiveGenSig ?? ""}::${style}`;
   return {
-    cached: entry.text === segment.text && entry.voice === voice && entry.quality === effectiveQuality,
+    cached:
+      entry.text === segment.text &&
+      entry.voice === voice &&
+      entry.quality === effectiveQuality &&
+      entry.genSig === effectiveGenSig &&
+      (entry.instruct ?? "") === style,
     voice,
     signature,
   };
@@ -111,6 +129,7 @@ export default function App() {
   } = useEngine();
   const activeEngineInfo = engines.find((e) => e.name === activeEngine) ?? null;
   const supportsVoiceModes = activeEngineInfo?.supports_voice_modes ?? false;
+  const supportsStylePrompt = activeEngineInfo?.supports_style_prompt ?? false;
   const supportsVoiceCloning = activeEngineInfo?.supports_voice_cloning ?? true;
   const engineLanguages = activeEngineInfo?.languages ?? [];
   // Chatterbox: language is a synth param (cloning engine with languages)
@@ -134,6 +153,32 @@ export default function App() {
     setQuality(q);
     localStorage.setItem("vs.voxcpm.quality", q);
   };
+  // Qwen3-TTS CustomVoice only — advanced sampling params. Ignored by other engines.
+  const [qwenParams, setQwenParams] = useState<QwenParams>(() => {
+    try {
+      const raw = localStorage.getItem("vs.qwen.params");
+      if (raw) return { ...QWEN_DEFAULTS, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return QWEN_DEFAULTS;
+  });
+  const onQwenParamsChange = (p: QwenParams) => {
+    setQwenParams(p);
+    localStorage.setItem("vs.qwen.params", JSON.stringify(p));
+  };
+  const qwenSynthOpts =
+    activeEngine === "qwen"
+      ? {
+          temperature: qwenParams.temperature,
+          topP: qwenParams.topP,
+          topK: qwenParams.topK,
+          repetitionPenalty: qwenParams.repetitionPenalty,
+          seed: qwenParams.seed,
+        }
+      : {};
+  const qwenGenSig =
+    activeEngine === "qwen"
+      ? `t${qwenParams.temperature}|p${qwenParams.topP}|k${qwenParams.topK}|r${qwenParams.repetitionPenalty}|s${qwenParams.seed ?? ""}`
+      : undefined;
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
@@ -276,6 +321,7 @@ export default function App() {
           cfgWeight: isChatterbox ? cfgScale : null,
           exaggeration: isChatterbox ? exaggeration : null,
           ...(activeEngine === "voxcpm" ? { inferenceSteps: QUALITY_TIMESTEPS[quality] } : {}),
+          ...qwenSynthOpts,
         });
         project.cacheAudio(segmentId, {
           audioData,
@@ -285,6 +331,7 @@ export default function App() {
           ...(isOmni ? { mode } : {}),
           ...(instruct ? { instruct } : {}),
           quality: activeEngine === "voxcpm" ? quality : undefined,
+          genSig: qwenGenSig,
         });
       } catch (err: unknown) {
         showError(err, "Synthesis failed");
@@ -292,7 +339,7 @@ export default function App() {
         setGeneratingId(null);
       }
     },
-    [project, showError, cfgScale, exaggeration, activeEngine, quality],
+    [project, showError, cfgScale, exaggeration, activeEngine, quality, qwenParams],
   );
 
   // ---- playback ----
@@ -315,7 +362,7 @@ export default function App() {
       try {
         const seg = project.segments.find((s) => s.id === segmentId);
         if (!seg) return;
-        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
+        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
         if (!cached) {
           await generateFor(segmentId);
         }
@@ -326,7 +373,7 @@ export default function App() {
         setPlayingId((id) => (id === segmentId ? null : id));
       }
     },
-    [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, quality],
+    [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, supportsStylePrompt, quality, qwenGenSig],
   );
 
   const handleStop = useCallback(() => {
@@ -372,7 +419,7 @@ export default function App() {
         setCurrentIndex(i);
         setPlayingId(seg.id);
         try {
-          const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
+          const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
           if (!cached) {
             setGeneratingId(seg.id);
             try {
@@ -391,7 +438,7 @@ export default function App() {
       setCurrentIndex(-1);
       setPlayingId(null);
     }
-  }, [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, quality]);
+  }, [project, generateFor, playCached, showError, activeEngine, supportsVoiceModes, supportsStylePrompt, quality, qwenGenSig]);
 
   const handleStopAll = useCallback(() => {
     stopAllRef.current = true;
@@ -447,7 +494,7 @@ export default function App() {
       for (let i = 0; i < valid.length; i++) {
         const seg = valid[i]!;
         // Skip already-cached segments
-        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
+        const { cached } = isSegmentCached(seg, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
         if (cached) continue;
 
         setExportProgress(`Segment ${i + 1}/${valid.length}`);
@@ -464,7 +511,7 @@ export default function App() {
       setIsExporting(false);
       setExportProgress("");
     }
-  }, [project, generateFor, showError, activeEngine, supportsVoiceModes, quality]);
+  }, [project, generateFor, showError, activeEngine, supportsVoiceModes, supportsStylePrompt, quality, qwenGenSig]);
 
   // ---- TTS mode generation ----
 
@@ -500,6 +547,7 @@ export default function App() {
         exaggeration: isChatterbox ? exaggeration : null,
         languageId: isCloningLangEngine ? (pm.tts.language ?? undefined) : undefined,
         ...(activeEngine === "voxcpm" ? { inferenceSteps: QUALITY_TIMESTEPS[quality] } : {}),
+        ...qwenSynthOpts,
       });
       project.cacheAudio(TTS_SEG_ID, {
         audioData,
@@ -509,10 +557,11 @@ export default function App() {
         ...(isOmni ? { mode } : {}),
         ...(instruct ? { instruct } : {}),
         quality: activeEngine === "voxcpm" ? quality : undefined,
+        genSig: qwenGenSig,
       });
     } catch (err) { showError(err, "Synthesis failed"); }
     finally { setGeneratingId(null); }
-  }, [pm.tts, displayedVoices, activeEngine, cfgScale, exaggeration, isCloningLangEngine, project, showError, quality]);
+  }, [pm.tts, displayedVoices, activeEngine, cfgScale, exaggeration, isCloningLangEngine, project, showError, quality, qwenParams]);
 
   const playTts = useCallback(async () => {
     // Toggle: if the TTS clip is already playing, this acts as Stop.
@@ -612,6 +661,11 @@ export default function App() {
       voice_mode?: "clone" | "design" | "auto";
       instruct?: string;
       inference_steps?: number;
+      temperature?: number;
+      top_p?: number;
+      top_k?: number;
+      repetition_penalty?: number;
+      seed?: number;
     }[] = [];
     const isChatterbox = activeEngine === "chatterbox";
     const isOmni = supportsVoiceModes;
@@ -652,6 +706,13 @@ export default function App() {
         ...(isOmni ? { voice_mode: mode } : {}),
         ...(instruct ? { instruct } : {}),
         ...(activeEngine === "voxcpm" ? { inference_steps: QUALITY_TIMESTEPS[quality] } : {}),
+        ...(activeEngine === "qwen" ? {
+          temperature: qwenParams.temperature,
+          top_p: qwenParams.topP,
+          top_k: qwenParams.topK,
+          repetition_penalty: qwenParams.repetitionPenalty,
+          ...(qwenParams.seed != null ? { seed: qwenParams.seed } : {}),
+        } : {}),
       });
     }
 
@@ -680,7 +741,7 @@ export default function App() {
       setIsExporting(false);
       setExportProgress("");
     }
-  }, [project, showError, cfgScale, exaggeration, activeEngine, supportsVoiceModes, quality]);
+  }, [project, showError, cfgScale, exaggeration, activeEngine, supportsVoiceModes, quality, qwenParams]);
 
   const viewportWidth = useViewportWidth();
 
@@ -691,10 +752,10 @@ export default function App() {
   const cachedCount = useMemo(
     () =>
       project.segments.filter((s) => {
-        const { cached } = isSegmentCached(s, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
+        const { cached } = isSegmentCached(s, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
         return cached;
       }).length,
-    [project.segments, project.audioCache, project.speakers, supportsVoiceModes, activeEngine, quality],
+    [project.segments, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine, quality, qwenGenSig],
   );
   const busy = isPlayingAll || isExporting || generatingId !== null;
 
@@ -793,6 +854,7 @@ export default function App() {
               onLanguageChange={pm.setTtsLanguage}
               supportsVoiceModes={supportsVoiceModes}
               supportsStyleClone={activeEngineInfo?.supports_style_clone ?? false}
+              supportsStylePrompt={supportsStylePrompt}
               activeEngine={activeEngine}
               omniMode={effectiveMode({ voice: pm.tts.voiceId ?? "", omnivoiceMode: pm.tts.omnivoiceMode })}
               onOmniModeChange={pm.setTtsOmniMode}
@@ -851,6 +913,7 @@ export default function App() {
                   activeEngine={activeEngine}
                   supportsVoiceModes={activeEngineInfo?.supports_voice_modes ?? false}
                   supportsStyleClone={activeEngineInfo?.supports_style_clone ?? false}
+                  supportsStylePrompt={supportsStylePrompt}
                   onAddSpeaker={project.addSpeaker}
                   onUpdateSpeaker={project.updateSpeaker}
                   onRemoveSpeaker={project.removeSpeaker}
@@ -860,7 +923,7 @@ export default function App() {
 
               <div className="space-y-4">
                 {project.segments.map((segment, index) => {
-                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, supportsVoiceModes, activeEngine === "voxcpm" ? quality : undefined);
+                  const { cached } = isSegmentCached(segment, project.audioCache, project.speakers, supportsVoiceModes, supportsStylePrompt, activeEngine === "voxcpm" ? quality : undefined, qwenGenSig);
                   return (
                     <SegmentCard
                       key={segment.id}
@@ -933,6 +996,9 @@ export default function App() {
         onExaggerationChange={setExaggeration}
         quality={quality}
         onQualityChange={onQualityChange}
+        qwenParams={qwenParams}
+        onQwenParamsChange={onQwenParamsChange}
+        qwenDefaults={QWEN_DEFAULTS}
       />
 
       {installEngine && (
