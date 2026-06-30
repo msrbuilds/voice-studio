@@ -29,12 +29,14 @@ export interface Voice {
   duration_sec: number | null;
   sample_rate: number | null;
   engine: string | null;
+  reference_transcript: string | null;
 }
 
 export interface VoiceMetadata {
   name?: string;
   gender?: string;
   language?: string;
+  reference_transcript?: string;
 }
 
 export interface ConfigResponse {
@@ -65,6 +67,8 @@ export interface EngineInfo {
   default_cfg_scale: number | null;
   active: boolean;
   languages: EngineLanguage[];
+  supports_voice_modes: boolean;
+  supports_style_clone: boolean;
 }
 
 export interface InstallStatus {
