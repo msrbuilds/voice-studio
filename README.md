@@ -54,6 +54,21 @@ Multi-segment **podcast editor** plus a single-textarea **text-to-voice** mode, 
 - **Isolated-environment engines** (Chatterbox, OmniVoice, VoxCPM) build their own venv on demand; **VoxCPM requires Python 3.10–3.12**
 - **OS**: Windows 10/11, Linux, macOS
 
+### System dependencies
+
+Two native tools are used at runtime and are **not** installed by `pip`. `python studio.py setup` checks for them and prints the right command for your OS; you can also install them yourself:
+
+- **`espeak-ng`** — **required by Kokoro** for text phonemization. Without it on your `PATH`, Kokoro produces silent audio. The other engines don't need it.
+- **`ffmpeg`** — used for some audio I/O.
+
+| OS | `espeak-ng` | `ffmpeg` |
+|---|---|---|
+| Windows | `winget install eSpeak-NG.eSpeak-NG` | `winget install Gyan.FFmpeg` |
+| macOS | `brew install espeak-ng` | `brew install ffmpeg` |
+| Linux (Debian/Ubuntu) | `sudo apt-get install espeak-ng` | `sudo apt-get install ffmpeg` |
+
+Restart the backend after installing so it picks them up on `PATH`.
+
 ## Getting Started
 
 ### 1. Clone
@@ -275,7 +290,7 @@ Base URL: `http://localhost:8880/api`
 - **CUDA available but model runs on CPU** — you probably installed the CPU-only PyTorch wheel. Reinstall from `https://download.pytorch.org/whl/cu121` (or `cu118` / `cu124` matching your driver).
 - **`flash_attn seems to be not installed`** — safe to ignore; the backend retries with `sdpa`.
 - **`Kokoro failed to init for lang_code='j'`** — install the matching misaki extra: `pip install misaki[ja]`. Same for `'z'` (Mandarin) — `pip install misaki[zh]`.
-- **Kokoro is silent / no audio** — `espeak-ng` is not on PATH. Install it (see "Notes & gotchas" above) and restart the backend.
+- **Kokoro is silent / no audio** — `espeak-ng` is not on PATH. Install it (see [System dependencies](#system-dependencies)) and restart the backend.
 - **Switched to Kokoro but old cached audio still plays** — the cache is per-engine, so the old VibeVoice audio remains valid. Click **Regenerate** on each segment to produce new Kokoro audio.
 - **`out of memory` during generation** — switch to `--device cpu` or shorten the text. The backend returns 507 with a clear message and empties the CUDA cache.
 - **No built-in voices in the sidebar** — drop a `.wav`/`.mp3`/`.flac`/`.ogg` into `backend/voices/` and restart the backend.
