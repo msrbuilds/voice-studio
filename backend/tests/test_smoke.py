@@ -303,6 +303,24 @@ def test_engines_voice_tag(tmp_path):
         assert v["engine"] in ("kokoro", "vibevoice", "qwen")
 
 
+def test_cache_total_size(tmp_path):
+    from backend.services.synth_cache import SynthCache
+
+    cache = SynthCache(tmp_path / "c", enabled=True, max_entries=10)
+    assert cache.total_size() == 0
+    cache.put(
+        "abc123",
+        b"\x00" * 2048,
+        sample_rate=24000,
+        duration_sec=0.1,
+        inference_ms=1,
+        text="hi",
+        voice="v",
+    )
+    # WAV (2048) + its JSON meta both count toward on-disk size.
+    assert cache.total_size() >= 2048
+
+
 if __name__ == "__main__":
     import tempfile
 
