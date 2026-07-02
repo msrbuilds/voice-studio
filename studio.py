@@ -380,6 +380,37 @@ def _ensure_qwen_env() -> bool:
     )
 
 
+def installed_engine_venvs(repo_root: Path):
+    """List (name, venv_dir, marker, ensure_fn) for engine venvs whose ready
+    marker exists — i.e. those safe to rebuild."""
+    backend = repo_root / "backend"
+    specs = [
+        ("chatterbox", backend / "venv-chatterbox",
+         chatterbox_ready_marker(repo_root), _ensure_chatterbox_env),
+        ("omnivoice", backend / "venv-omnivoice",
+         omnivoice_ready_marker(repo_root), _ensure_omnivoice_env),
+        ("voxcpm", backend / "venv-voxcpm",
+         voxcpm_ready_marker(repo_root), _ensure_voxcpm_env),
+        ("qwen", backend / "venv-qwen",
+         qwen_ready_marker(repo_root), _ensure_qwen_env),
+    ]
+    return [(n, vd, mk, fn) for (n, vd, mk, fn) in specs if mk.is_file()]
+
+
+def _dir_size_bytes(path: Path) -> int:
+    """Total size of files under `path` (0 if it doesn't exist)."""
+    total = 0
+    if not path.exists():
+        return 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += (Path(root) / f).stat().st_size
+            except OSError:
+                pass
+    return total
+
+
 def _ensure_chatterbox_env_pip() -> bool:
     """Create backend/venv-chatterbox and install chatterbox-tts into it.
 
@@ -818,6 +849,68 @@ def cmd_install_qwen(_args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+# --------------------------------------------------------- optimize-venvs --
+def _rebuild_main_venv_uv() -> int:
+    """Recreate backend/venv and reinstall its deps via uv. studio.py runs on
+    the system Python, so removing the venv is safe when no server is running."""
+    shutil.rmtree(VENV_DIR, ignore_errors=True)
+    if _run([sys.executable, "-m", "venv", str(VENV_DIR)]) != 0:
+        print("  ERROR: failed to recreate backend/venv.")
+        return 1
+    _UV_RESOLVED.pop("uv", None)  # force re-install of uv into the fresh venv
+    uv = _ensure_uv()
+    if uv is None:
+        print("  ERROR: could not install uv into the rebuilt main venv.")
+        return 1
+    tag = envdetect.detect_cuda_tag()
+    index = envdetect.torch_index_url(tag)
+    return 0 if _install_main_deps_uv(uv, index) else 1
+
+
+def cmd_optimize_venvs(args: argparse.Namespace) -> int:
+    """Rebuild existing engine venvs via uv to reclaim disk (dedup via the
+    shared uv cache). Optionally rebuild the main venv with --include-main."""
+    print(BANNER)
+    if _ensure_uv() is None:
+        print("uv is unavailable and could not be installed — nothing to "
+              "optimize. (Engine venvs already use pip; no dedup possible.)")
+        return 1
+    present = installed_engine_venvs(REPO_ROOT)
+    if not present and not args.include_main:
+        print("No installed engine venvs found. Nothing to do.")
+        return 0
+
+    def _all_venv_bytes() -> int:
+        return sum(_dir_size_bytes(p) for p in
+                   (REPO_ROOT / "backend").glob("venv*"))
+
+    gb = 1024 * 1024 * 1024
+    before = _all_venv_bytes()
+    print(f"Current venv disk: {before / gb:.1f} GB")
+
+    failed: list[str] = []
+    for name, venv_dir, _marker, ensure_fn in present:
+        print(f"\nRebuilding {name} ({venv_dir.name}) via uv …")
+        shutil.rmtree(venv_dir, ignore_errors=True)
+        if not ensure_fn():
+            print(f"  ERROR: {name} rebuild failed — reinstall it later "
+                  f"(studio.py install-{name}).")
+            failed.append(name)
+
+    if args.include_main:
+        print("\nRebuilding the main venv (backend/venv) via uv …")
+        if _rebuild_main_venv_uv() != 0:
+            failed.append("main")
+
+    after = _all_venv_bytes()
+    print(f"\nVenv disk: {before / gb:.1f} GB → {after / gb:.1f} GB "
+          f"(saved {(before - after) / gb:.1f} GB)")
+    if failed:
+        print("Rebuild failed for: " + ", ".join(failed))
+        return 1
+    return 0
+
+
 # --------------------------------------------------------------- update --
 def _git_out(args: list[str]) -> tuple[int, str]:
     """Run a git command in REPO_ROOT, returning (returncode, stdout)."""
@@ -1063,6 +1156,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("install-voxcpm", help="build the isolated VoxCPM env (non-interactive)")
     sub.add_parser("install-qwen", help="build the isolated Qwen env (non-interactive)")
 
+    p_opt = sub.add_parser("optimize-venvs",
+                           help="rebuild engine venvs via uv to reclaim disk")
+    p_opt.add_argument("--include-main", action="store_true",
+                       help="also rebuild the main backend/venv")
+
     p_update = sub.add_parser("update", help="check out a release tag, sync deps, rebuild frontend")
     p_update.add_argument("--tag", required=True, help="release tag to check out (e.g. v0.3.0)")
 
@@ -1079,6 +1177,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_install_voxcpm(args)
     if args.command == "install-qwen":
         return cmd_install_qwen(args)
+    if args.command == "optimize-venvs":
+        return cmd_optimize_venvs(args)
     if args.command == "update":
         return cmd_update(args)
     if args.command == "start":

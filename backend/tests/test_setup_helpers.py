@@ -84,6 +84,27 @@ def test_uv_pip_install_cmd():
     py = studio._engine_venv_python(venv)
     assert cmd == [str(uv), "pip", "install", "--python", str(py), "-r", "req.txt"]
 
+
+def test_installed_engine_venvs_filters_by_marker(tmp_path):
+    # Only engines whose ready-marker exists are returned.
+    (tmp_path / "backend" / "venv-qwen").mkdir(parents=True)
+    (tmp_path / "backend" / "venv-qwen" / ".qwen-ready").write_text("ok")
+    names = [name for name, _vd, _mk, _fn in studio.installed_engine_venvs(tmp_path)]
+    assert names == ["qwen"]
+
+
+def test_installed_engine_venvs_empty(tmp_path):
+    assert studio.installed_engine_venvs(tmp_path) == []
+
+
+def test_dir_size_bytes(tmp_path):
+    (tmp_path / "a.bin").write_bytes(b"\x00" * 1000)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "b.bin").write_bytes(b"\x00" * 500)
+    assert studio._dir_size_bytes(tmp_path) == 1500
+    assert studio._dir_size_bytes(tmp_path / "missing") == 0
+
 _SAMPLE_SMI = """
 +-----------------------------------------------------------------------------+
 | NVIDIA-SMI 552.22       Driver Version: 552.22       CUDA Version: 12.4      |
