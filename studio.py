@@ -236,7 +236,137 @@ def _pip_pkg_version(py: Path, pkg: str) -> str | None:
     return None
 
 
+def _ensure_engine_env_uv(
+    uv: Path,
+    venv_dir: Path,
+    requirements_file: Path,
+    marker: Path,
+    label: str,
+    cuda_tag: str | None,
+    torch_strategy: str,           # "newest" | "pinned"
+) -> bool:
+    """Build an isolated engine venv with uv (hardlinked from the shared cache).
+
+    Steps: uv venv -> uv pip install -r <req> -> reinstall the CUDA torch build.
+    Returns True on success. The caller handles pip fallback if uv is None.
+    """
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+    epy = _engine_venv_python(venv_dir)
+    if not epy.is_file():
+        print(f"  Creating isolated {label} environment ({venv_dir.name}) with uv …")
+        if _run(_uv_venv_cmd(uv, venv_dir, sys.executable)) != 0:
+            print(f"  ERROR: failed to create {venv_dir.name}.")
+            return False
+    print(f"  Installing {label} deps with uv …")
+    if _run(_uv_pip_install_cmd(uv, venv_dir, ["-r", str(requirements_file)])) != 0:
+        print(f"  ERROR: {label} dependency install failed.")
+        return False
+    index = envdetect.torch_index_url(cuda_tag) if cuda_tag else None
+    if index:
+        if torch_strategy == "pinned":
+            tv = _pip_pkg_version(epy, "torch")
+            av = _pip_pkg_version(epy, "torchaudio")
+            specs = []
+            if tv:
+                specs.append(f"torch=={tv}+{cuda_tag}")
+            if av:
+                specs.append(f"torchaudio=={av}+{cuda_tag}")
+            if not specs:
+                specs = ["torch", "torchaudio"]
+        else:
+            specs = ["torch", "torchaudio"]
+        print(f"  Installing the CUDA build of torch ({cuda_tag}) for GPU …")
+        if _run(_uv_pip_install_cmd(
+                uv, venv_dir,
+                ["--index-url", index, "--reinstall", *specs])) != 0:
+            print("  ERROR: CUDA torch install failed.")
+            return False
+    else:
+        print(f"  No matching torch CUDA build for this driver — {label} will "
+              "run on CPU (slow).")
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("ok\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"  ERROR: could not write ready marker: {exc}")
+        return False
+    print(f"  {label} environment ready.")
+    return True
+
+
 def _ensure_chatterbox_env() -> bool:
+    uv = _ensure_uv()
+    if uv is None:
+        return _ensure_chatterbox_env_pip()
+    cb_tag = _chatterbox_torch_tag(
+        envdetect.detect_cuda_tag(),
+        preferred_tag=main_venv_torch_tag(REPO_ROOT),
+    )
+    return _ensure_engine_env_uv(
+        uv,
+        BACKEND_DIR / "venv-chatterbox",
+        BACKEND_DIR / "requirements-chatterbox.txt",
+        chatterbox_ready_marker(REPO_ROOT),
+        "Chatterbox",
+        cb_tag,
+        torch_strategy="pinned",
+    )
+
+
+def _ensure_omnivoice_env() -> bool:
+    uv = _ensure_uv()
+    if uv is None:
+        return _ensure_omnivoice_env_pip()
+    return _ensure_engine_env_uv(
+        uv,
+        BACKEND_DIR / "venv-omnivoice",
+        BACKEND_DIR / "requirements-omnivoice.txt",
+        omnivoice_ready_marker(REPO_ROOT),
+        "OmniVoice",
+        envdetect.detect_omnivoice_cuda_tag(),
+        torch_strategy="newest",
+    )
+
+
+def _ensure_voxcpm_env() -> bool:
+    if not _python_supported_for_voxcpm(sys.version_info):
+        print("  ERROR: VoxCPM requires Python 3.10–3.12 (you have "
+              f"{sys.version_info.major}.{sys.version_info.minor}). "
+              "Install a supported Python and re-run.")
+        return False
+    uv = _ensure_uv()
+    if uv is None:
+        return _ensure_voxcpm_env_pip()
+    return _ensure_engine_env_uv(
+        uv,
+        BACKEND_DIR / "venv-voxcpm",
+        BACKEND_DIR / "requirements-voxcpm.txt",
+        voxcpm_ready_marker(REPO_ROOT),
+        "VoxCPM",
+        envdetect.detect_voxcpm_cuda_tag(),
+        torch_strategy="newest",
+    )
+
+
+def _ensure_qwen_env() -> bool:
+    uv = _ensure_uv()
+    if uv is None:
+        return _ensure_qwen_env_pip()
+    return _ensure_engine_env_uv(
+        uv,
+        BACKEND_DIR / "venv-qwen",
+        BACKEND_DIR / "requirements-qwen.txt",
+        qwen_ready_marker(REPO_ROOT),
+        "Qwen",
+        envdetect.detect_qwen_cuda_tag(),
+        torch_strategy="newest",
+    )
+
+
+def _ensure_chatterbox_env_pip() -> bool:
     """Create backend/venv-chatterbox and install chatterbox-tts into it.
 
     Chatterbox can't share the main venv (transformers pin conflict), so it
@@ -302,7 +432,7 @@ def _ensure_chatterbox_env() -> bool:
     return True
 
 
-def _ensure_omnivoice_env() -> bool:
+def _ensure_omnivoice_env_pip() -> bool:
     """Create backend/venv-omnivoice and install omnivoice into it.
 
     OmniVoice can't share any existing venv (transformers>=5.3.0 + torch 2.8),
@@ -359,7 +489,7 @@ def _ensure_omnivoice_env() -> bool:
     return True
 
 
-def _ensure_voxcpm_env() -> bool:
+def _ensure_voxcpm_env_pip() -> bool:
     """Create backend/venv-voxcpm and install voxcpm into it.
 
     VoxCPM needs torch>=2.5 / CUDA>=12 plus a heavy dependency tail, so it gets
@@ -418,7 +548,7 @@ def _ensure_voxcpm_env() -> bool:
     return True
 
 
-def _ensure_qwen_env() -> bool:
+def _ensure_qwen_env_pip() -> bool:
     """Create backend/venv-qwen and install qwen-tts into it.
 
     qwen-tts pins transformers==4.57.3 (incompatible with every other engine),
