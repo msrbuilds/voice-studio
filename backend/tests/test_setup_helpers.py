@@ -25,6 +25,42 @@ def test_uv_executable_path():
 def test_uv_cache_dir():
     assert studio.uv_cache_dir(Path("/repo")) == Path("/repo/backend/.uv-cache")
 
+
+def test_main_venv_torch_tag_parses_distinfo(tmp_path, monkeypatch):
+    monkeypatch.setattr(studio.os, "name", "nt")
+    sp = tmp_path / "backend" / "venv" / "Lib" / "site-packages"
+    sp.mkdir(parents=True)
+    (sp / "torch-2.6.0+cu124.dist-info").mkdir()
+    assert studio.main_venv_torch_tag(tmp_path) == "cu124"
+
+
+def test_main_venv_torch_tag_cpu_build_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(studio.os, "name", "nt")
+    sp = tmp_path / "backend" / "venv" / "Lib" / "site-packages"
+    sp.mkdir(parents=True)
+    (sp / "torch-2.6.0+cpu.dist-info").mkdir()
+    assert studio.main_venv_torch_tag(tmp_path) is None
+
+
+def test_main_venv_torch_tag_missing_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(studio.os, "name", "nt")
+    assert studio.main_venv_torch_tag(tmp_path) is None
+
+
+def test_chatterbox_tag_prefers_main_tag():
+    # When the main venv runs cu124 (proof the driver supports it), reuse it.
+    assert studio._chatterbox_torch_tag("cu118", preferred_tag="cu124") == "cu124"
+    assert studio._chatterbox_torch_tag("cu124", preferred_tag="cu118") == "cu118"
+
+
+def test_chatterbox_tag_fallback_without_preferred():
+    # Original behavior preserved when there's no preferred tag.
+    assert studio._chatterbox_torch_tag("cu124") == "cu124"
+    assert studio._chatterbox_torch_tag("cu121") == "cu118"
+    assert studio._chatterbox_torch_tag("cu118") == "cu118"
+    assert studio._chatterbox_torch_tag(None) is None
+    assert studio._chatterbox_torch_tag("cpu") is None
+
 _SAMPLE_SMI = """
 +-----------------------------------------------------------------------------+
 | NVIDIA-SMI 552.22       Driver Version: 552.22       CUDA Version: 12.4      |

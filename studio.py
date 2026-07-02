@@ -158,16 +158,42 @@ def _python_supported_for_voxcpm(version_info) -> bool:
     return major == 3 and 10 <= minor <= 12
 
 
-def _chatterbox_torch_tag(detected_tag: str | None) -> str | None:
-    """Pick a CUDA wheel build for Chatterbox's pinned torch.
+def main_venv_torch_tag(repo_root: Path) -> str | None:
+    """CUDA build tag (e.g. 'cu124') of the torch installed in the main venv,
+    read from its dist-info directory name (no torch import). None if not found
+    or it's a non-CUDA (+cpu) build."""
+    venv = repo_root / "backend" / "venv"
+    if os.name == "nt":
+        sp = venv / "Lib" / "site-packages"
+    else:
+        cands = sorted(venv.glob("lib/python*/site-packages"))
+        sp = cands[0] if cands else venv / "lib" / "site-packages"
+    try:
+        dist_infos = list(sp.glob("torch-*.dist-info"))
+    except OSError:
+        return None
+    for d in dist_infos:
+        name = d.name  # e.g. "torch-2.6.0+cu124.dist-info"
+        if "+cu" in name:
+            return "cu" + name.split("+cu", 1)[1].split(".dist-info", 1)[0]
+    return None
 
-    chatterbox-tts pins torch>=2.6.0, which the cu121 index does NOT publish,
-    and cu124 wheels need a CUDA 12.4 driver. Map the detected driver to a
-    build that both hosts modern torch AND runs on that driver:
+
+def _chatterbox_torch_tag(detected_tag: str | None,
+                          preferred_tag: str | None = None) -> str | None:
+    """Pick a CUDA wheel build for Chatterbox's pinned torch (torch>=2.6.0,
+    published for cu124/cu118).
+
+    If the main venv already runs a CUDA torch build (`preferred_tag`, proof the
+    driver supports it), reuse that exact tag so the identical torch VERSION
+    deduplicates with the main venv under uv. Otherwise fall back to the
+    conservative driver-derived mapping:
       - cu124 driver -> cu124
       - cu121 / cu118 driver -> cu118 (CUDA 11.8 runs on every 12.x driver)
       - cpu / mps / unknown -> None (leave the CPU wheel in place)
     """
+    if preferred_tag in ("cu124", "cu118"):
+        return preferred_tag
     if detected_tag == "cu124":
         return "cu124"
     if detected_tag in ("cu121", "cu118"):
