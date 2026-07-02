@@ -152,6 +152,26 @@ def _ensure_uv() -> Path | None:
     return uv
 
 
+def _engine_venv_python(venv_dir: Path) -> Path:
+    """Interpreter path inside an isolated engine venv for the current OS."""
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
+def _uv_venv_cmd(uv: Path, venv_dir: Path, python: str) -> list[str]:
+    """`uv venv` pinned to a specific interpreter via --python, so the engine
+    venv uses the same Python `python -m venv` would have (this preserves
+    VoxCPM's 3.10–3.12 requirement — uv otherwise picks its own default)."""
+    return [str(uv), "venv", "--python", str(python), str(venv_dir)]
+
+
+def _uv_pip_install_cmd(uv: Path, venv_dir: Path, extra: list[str]) -> list[str]:
+    """`uv pip install` targeting a specific venv via --python."""
+    py = _engine_venv_python(venv_dir)
+    return [str(uv), "pip", "install", "--python", str(py), *extra]
+
+
 def _python_supported_for_voxcpm(version_info) -> bool:
     """VoxCPM (torchcodec/funasr) supports Python 3.10–3.12 only."""
     major, minor = version_info[0], version_info[1]

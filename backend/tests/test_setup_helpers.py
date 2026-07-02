@@ -61,6 +61,29 @@ def test_chatterbox_tag_fallback_without_preferred():
     assert studio._chatterbox_torch_tag(None) is None
     assert studio._chatterbox_torch_tag("cpu") is None
 
+
+def test_engine_venv_python_current_os():
+    p = studio._engine_venv_python(Path("/x/venv-qwen"))
+    if studio.os.name == "nt":
+        assert p == Path("/x/venv-qwen/Scripts/python.exe")
+    else:
+        assert p == Path("/x/venv-qwen/bin/python")
+
+
+def test_uv_venv_cmd_includes_python():
+    # Must pass --python so uv uses the same interpreter as `python -m venv`
+    # would (preserves VoxCPM's 3.10–3.12 requirement).
+    uv, venv = Path("/uv"), Path("/v")
+    cmd = studio._uv_venv_cmd(uv, venv, "/py")
+    assert cmd == [str(uv), "venv", "--python", "/py", str(venv)]
+
+
+def test_uv_pip_install_cmd():
+    uv, venv = Path("/uv"), Path("/v")
+    cmd = studio._uv_pip_install_cmd(uv, venv, ["-r", "req.txt"])
+    py = studio._engine_venv_python(venv)
+    assert cmd == [str(uv), "pip", "install", "--python", str(py), "-r", "req.txt"]
+
 _SAMPLE_SMI = """
 +-----------------------------------------------------------------------------+
 | NVIDIA-SMI 552.22       Driver Version: 552.22       CUDA Version: 12.4      |
