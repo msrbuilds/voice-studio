@@ -880,13 +880,13 @@ def cmd_optimize_venvs(args: argparse.Namespace) -> int:
         print("No installed engine venvs found. Nothing to do.")
         return 0
 
-    def _all_venv_bytes() -> int:
-        return sum(_dir_size_bytes(p) for p in
-                   (REPO_ROOT / "backend").glob("venv*"))
-
     gb = 1024 * 1024 * 1024
-    before = _all_venv_bytes()
-    print(f"Current venv disk: {before / gb:.1f} GB")
+    # Logical footprint (informational). Note: after uv hardlinks packages from
+    # the shared cache, this sum barely changes — hardlinks report full size at
+    # every link. Real reclaimed space is the volume's FREE-space delta below.
+    logical = sum(_dir_size_bytes(p) for p in (REPO_ROOT / "backend").glob("venv*"))
+    print(f"Current venv footprint (logical): {logical / gb:.1f} GB")
+    free_before = shutil.disk_usage(str(BACKEND_DIR)).free
 
     failed: list[str] = []
     for name, venv_dir, _marker, ensure_fn in present:
@@ -902,9 +902,11 @@ def cmd_optimize_venvs(args: argparse.Namespace) -> int:
         if _rebuild_main_venv_uv() != 0:
             failed.append("main")
 
-    after = _all_venv_bytes()
-    print(f"\nVenv disk: {before / gb:.1f} GB → {after / gb:.1f} GB "
-          f"(saved {(before - after) / gb:.1f} GB)")
+    free_after = shutil.disk_usage(str(BACKEND_DIR)).free
+    reclaimed = (free_after - free_before) / gb
+    print(f"\nDisk reclaimed on {BACKEND_DIR.anchor or BACKEND_DIR}: "
+          f"{reclaimed:.1f} GB free "
+          f"({'freed' if reclaimed >= 0 else 'used'}).")
     if failed:
         print("Rebuild failed for: " + ", ".join(failed))
         return 1
