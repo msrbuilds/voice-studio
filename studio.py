@@ -236,6 +236,20 @@ def _pip_pkg_version(py: Path, pkg: str) -> str | None:
     return None
 
 
+def _install_main_deps_uv(uv: Path, index: str | None) -> bool:
+    """Install torch(+torchaudio) and backend requirements into the main venv
+    via uv (hardlinked from the shared cache). Returns True on success."""
+    torch_extra = ["torch", "torchaudio"]
+    if index:
+        torch_extra += ["--index-url", index]
+    print("  Installing torch into backend/venv with uv …")
+    if _run(_uv_pip_install_cmd(uv, VENV_DIR, torch_extra)) != 0:
+        return False
+    print("  Installing backend requirements with uv …")
+    return _run(_uv_pip_install_cmd(
+        uv, VENV_DIR, ["-r", str(BACKEND_DIR / "requirements.txt")])) == 0
+
+
 def _ensure_engine_env_uv(
     uv: Path,
     venv_dir: Path,
@@ -674,19 +688,26 @@ def cmd_setup(_args: argparse.Namespace) -> int:
             "3": envdetect.torch_index_url("cu118"),
             "4": None,
         }.get(choice, index)
-    pip_torch = [str(py), "-m", "pip", "install", "torch", "torchaudio"]
-    if index:
-        pip_torch += ["--index-url", index]
-    if _run(pip_torch) != 0:
-        print("ERROR: torch install failed. Re-run setup or install torch manually.")
-        return 1
-
-    # 3. backend requirements
-    print("\n[3/5] Installing backend dependencies …")
-    if _run([str(py), "-m", "pip", "install", "-r",
-             str(BACKEND_DIR / "requirements.txt")]) != 0:
-        print("ERROR: backend dependency install failed.")
-        return 1
+    # 3. torch + backend requirements — via uv when available (hardlinked from
+    #    the shared cache so the main venv's torch dedupes with the engine
+    #    venvs); pip is the fallback.
+    print("\n[3/5] Installing torch + backend dependencies …")
+    uv = _ensure_uv()
+    if uv is not None:
+        if not _install_main_deps_uv(uv, index):
+            print("ERROR: dependency install failed. Re-run setup.")
+            return 1
+    else:
+        pip_torch = [str(py), "-m", "pip", "install", "torch", "torchaudio"]
+        if index:
+            pip_torch += ["--index-url", index]
+        if _run(pip_torch) != 0:
+            print("ERROR: torch install failed. Re-run setup or install torch manually.")
+            return 1
+        if _run([str(py), "-m", "pip", "install", "-r",
+                 str(BACKEND_DIR / "requirements.txt")]) != 0:
+            print("ERROR: backend dependency install failed.")
+            return 1
 
     # 4. system deps + frontend
     print("\n[4/5] Checking system dependencies …")
