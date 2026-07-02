@@ -9,6 +9,101 @@ sys.path.insert(0, str(REPO_ROOT))
 from tools import envdetect  # noqa: E402
 from tools.envdetect import detect_voxcpm_cuda_tag, cuda_version_to_voxcpm_tag  # noqa: E402
 from tools.envdetect import detect_qwen_cuda_tag, cuda_version_to_qwen_tag  # noqa: E402
+import studio  # noqa: E402
+
+
+def test_uv_executable_path():
+    # Test current-OS behavior without flipping os.name globally (that breaks
+    # pathlib). Mirrors how the existing venv_python helper is (un)tested.
+    p = studio.uv_executable_path(Path("/repo"))
+    if studio.os.name == "nt":
+        assert p == Path("/repo/backend/venv/Scripts/uv.exe")
+    else:
+        assert p == Path("/repo/backend/venv/bin/uv")
+
+
+def test_uv_cache_dir():
+    assert studio.uv_cache_dir(Path("/repo")) == Path("/repo/backend/.uv-cache")
+
+
+def test_main_venv_torch_tag_parses_distinfo(tmp_path, monkeypatch):
+    monkeypatch.setattr(studio.os, "name", "nt")
+    sp = tmp_path / "backend" / "venv" / "Lib" / "site-packages"
+    sp.mkdir(parents=True)
+    (sp / "torch-2.6.0+cu124.dist-info").mkdir()
+    assert studio.main_venv_torch_tag(tmp_path) == "cu124"
+
+
+def test_main_venv_torch_tag_cpu_build_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(studio.os, "name", "nt")
+    sp = tmp_path / "backend" / "venv" / "Lib" / "site-packages"
+    sp.mkdir(parents=True)
+    (sp / "torch-2.6.0+cpu.dist-info").mkdir()
+    assert studio.main_venv_torch_tag(tmp_path) is None
+
+
+def test_main_venv_torch_tag_missing_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(studio.os, "name", "nt")
+    assert studio.main_venv_torch_tag(tmp_path) is None
+
+
+def test_chatterbox_tag_prefers_main_tag():
+    # When the main venv runs cu124 (proof the driver supports it), reuse it.
+    assert studio._chatterbox_torch_tag("cu118", preferred_tag="cu124") == "cu124"
+    assert studio._chatterbox_torch_tag("cu124", preferred_tag="cu118") == "cu118"
+
+
+def test_chatterbox_tag_fallback_without_preferred():
+    # Original behavior preserved when there's no preferred tag.
+    assert studio._chatterbox_torch_tag("cu124") == "cu124"
+    assert studio._chatterbox_torch_tag("cu121") == "cu118"
+    assert studio._chatterbox_torch_tag("cu118") == "cu118"
+    assert studio._chatterbox_torch_tag(None) is None
+    assert studio._chatterbox_torch_tag("cpu") is None
+
+
+def test_engine_venv_python_current_os():
+    p = studio._engine_venv_python(Path("/x/venv-qwen"))
+    if studio.os.name == "nt":
+        assert p == Path("/x/venv-qwen/Scripts/python.exe")
+    else:
+        assert p == Path("/x/venv-qwen/bin/python")
+
+
+def test_uv_venv_cmd_includes_python():
+    # Must pass --python so uv uses the same interpreter as `python -m venv`
+    # would (preserves VoxCPM's 3.10–3.12 requirement).
+    uv, venv = Path("/uv"), Path("/v")
+    cmd = studio._uv_venv_cmd(uv, venv, "/py")
+    assert cmd == [str(uv), "venv", "--python", "/py", str(venv)]
+
+
+def test_uv_pip_install_cmd():
+    uv, venv = Path("/uv"), Path("/v")
+    cmd = studio._uv_pip_install_cmd(uv, venv, ["-r", "req.txt"])
+    py = studio._engine_venv_python(venv)
+    assert cmd == [str(uv), "pip", "install", "--python", str(py), "-r", "req.txt"]
+
+
+def test_installed_engine_venvs_filters_by_marker(tmp_path):
+    # Only engines whose ready-marker exists are returned.
+    (tmp_path / "backend" / "venv-qwen").mkdir(parents=True)
+    (tmp_path / "backend" / "venv-qwen" / ".qwen-ready").write_text("ok")
+    names = [name for name, _vd, _mk, _fn in studio.installed_engine_venvs(tmp_path)]
+    assert names == ["qwen"]
+
+
+def test_installed_engine_venvs_empty(tmp_path):
+    assert studio.installed_engine_venvs(tmp_path) == []
+
+
+def test_dir_size_bytes(tmp_path):
+    (tmp_path / "a.bin").write_bytes(b"\x00" * 1000)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "b.bin").write_bytes(b"\x00" * 500)
+    assert studio._dir_size_bytes(tmp_path) == 1500
+    assert studio._dir_size_bytes(tmp_path / "missing") == 0
 
 _SAMPLE_SMI = """
 +-----------------------------------------------------------------------------+

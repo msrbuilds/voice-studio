@@ -19,6 +19,9 @@ venv-*/
 venv-chatterbox/
 venv-omnivoice/
 .venv/
+# uv's shared package cache (repo-local, on the venvs' volume so uv hardlinks
+# into each venv). Large runtime store — never tracked.
+.uv-cache/
 env/
 .env
 ENV/

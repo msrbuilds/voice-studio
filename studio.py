@@ -105,22 +105,115 @@ def qwen_ready_marker(repo_root: Path) -> Path:
     return repo_root / "backend" / "venv-qwen" / ".qwen-ready"
 
 
+def uv_executable_path(repo_root: Path) -> Path:
+    """Path to the `uv` binary installed inside the base backend/venv."""
+    venv = repo_root / "backend" / "venv"
+    if os.name == "nt":
+        return venv / "Scripts" / "uv.exe"
+    return venv / "bin" / "uv"
+
+
+def uv_cache_dir(repo_root: Path) -> Path:
+    """Repo-local uv cache, on the SAME volume as the venvs so uv hardlinks
+    (a cross-volume cache would silently fall back to copying — no dedup)."""
+    return repo_root / "backend" / ".uv-cache"
+
+
+# Memoized handle to the uv binary (None once we've decided uv is unavailable).
+_UV_RESOLVED: dict[str, Path | None] = {}
+
+
+def _ensure_uv() -> Path | None:
+    """Return a usable `uv` executable, installing it into backend/venv via pip
+    on first use. Sets UV_CACHE_DIR to the repo-local cache. Returns None if uv
+    can't be obtained — callers then fall back to the pip+venv path.
+    """
+    if "uv" in _UV_RESOLVED:
+        return _UV_RESOLVED["uv"]
+    uv = uv_executable_path(REPO_ROOT)
+    if not uv.is_file():
+        py = venv_python(REPO_ROOT)
+        if not py.is_file():
+            _UV_RESOLVED["uv"] = None
+            return None
+        print("  Installing uv into backend/venv (fast, deduplicated installs) …")
+        if _run([str(py), "-m", "pip", "install", "uv"]) != 0 or not uv.is_file():
+            print("  WARNING: could not install uv — falling back to pip.")
+            _UV_RESOLVED["uv"] = None
+            return None
+    cache = uv_cache_dir(REPO_ROOT)
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+        os.environ["UV_CACHE_DIR"] = str(cache)
+    except OSError as exc:
+        print(f"  WARNING: could not create uv cache dir {cache}: {exc} "
+              "(disk dedup may not apply).")
+    _UV_RESOLVED["uv"] = uv
+    return uv
+
+
+def _engine_venv_python(venv_dir: Path) -> Path:
+    """Interpreter path inside an isolated engine venv for the current OS."""
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
+def _uv_venv_cmd(uv: Path, venv_dir: Path, python: str) -> list[str]:
+    """`uv venv` pinned to a specific interpreter via --python, so the engine
+    venv uses the same Python `python -m venv` would have (this preserves
+    VoxCPM's 3.10–3.12 requirement — uv otherwise picks its own default)."""
+    return [str(uv), "venv", "--python", str(python), str(venv_dir)]
+
+
+def _uv_pip_install_cmd(uv: Path, venv_dir: Path, extra: list[str]) -> list[str]:
+    """`uv pip install` targeting a specific venv via --python."""
+    py = _engine_venv_python(venv_dir)
+    return [str(uv), "pip", "install", "--python", str(py), *extra]
+
+
 def _python_supported_for_voxcpm(version_info) -> bool:
     """VoxCPM (torchcodec/funasr) supports Python 3.10–3.12 only."""
     major, minor = version_info[0], version_info[1]
     return major == 3 and 10 <= minor <= 12
 
 
-def _chatterbox_torch_tag(detected_tag: str | None) -> str | None:
-    """Pick a CUDA wheel build for Chatterbox's pinned torch.
+def main_venv_torch_tag(repo_root: Path) -> str | None:
+    """CUDA build tag (e.g. 'cu124') of the torch installed in the main venv,
+    read from its dist-info directory name (no torch import). None if not found
+    or it's a non-CUDA (+cpu) build."""
+    venv = repo_root / "backend" / "venv"
+    if os.name == "nt":
+        sp = venv / "Lib" / "site-packages"
+    else:
+        cands = sorted(venv.glob("lib/python*/site-packages"))
+        sp = cands[0] if cands else venv / "lib" / "site-packages"
+    try:
+        dist_infos = list(sp.glob("torch-*.dist-info"))
+    except OSError:
+        return None
+    for d in dist_infos:
+        name = d.name  # e.g. "torch-2.6.0+cu124.dist-info"
+        if "+cu" in name:
+            return "cu" + name.split("+cu", 1)[1].split(".dist-info", 1)[0]
+    return None
 
-    chatterbox-tts pins torch>=2.6.0, which the cu121 index does NOT publish,
-    and cu124 wheels need a CUDA 12.4 driver. Map the detected driver to a
-    build that both hosts modern torch AND runs on that driver:
+
+def _chatterbox_torch_tag(detected_tag: str | None,
+                          preferred_tag: str | None = None) -> str | None:
+    """Pick a CUDA wheel build for Chatterbox's pinned torch (torch>=2.6.0,
+    published for cu124/cu118).
+
+    If the main venv already runs a CUDA torch build (`preferred_tag`, proof the
+    driver supports it), reuse that exact tag so the identical torch VERSION
+    deduplicates with the main venv under uv. Otherwise fall back to the
+    conservative driver-derived mapping:
       - cu124 driver -> cu124
       - cu121 / cu118 driver -> cu118 (CUDA 11.8 runs on every 12.x driver)
       - cpu / mps / unknown -> None (leave the CPU wheel in place)
     """
+    if preferred_tag in ("cu124", "cu118"):
+        return preferred_tag
     if detected_tag == "cu124":
         return "cu124"
     if detected_tag in ("cu121", "cu118"):
@@ -143,7 +236,182 @@ def _pip_pkg_version(py: Path, pkg: str) -> str | None:
     return None
 
 
+def _install_main_deps_uv(uv: Path, index: str | None) -> bool:
+    """Install torch(+torchaudio) and backend requirements into the main venv
+    via uv (hardlinked from the shared cache). Returns True on success."""
+    torch_extra = ["torch", "torchaudio"]
+    if index:
+        torch_extra += ["--index-url", index]
+    print("  Installing torch into backend/venv with uv …")
+    if _run(_uv_pip_install_cmd(uv, VENV_DIR, torch_extra)) != 0:
+        return False
+    print("  Installing backend requirements with uv …")
+    return _run(_uv_pip_install_cmd(
+        uv, VENV_DIR, ["-r", str(BACKEND_DIR / "requirements.txt")])) == 0
+
+
+def _ensure_engine_env_uv(
+    uv: Path,
+    venv_dir: Path,
+    requirements_file: Path,
+    marker: Path,
+    label: str,
+    cuda_tag: str | None,
+    torch_strategy: str,           # "newest" | "pinned"
+) -> bool:
+    """Build an isolated engine venv with uv (hardlinked from the shared cache).
+
+    Steps: uv venv -> uv pip install -r <req> -> reinstall the CUDA torch build.
+    Returns True on success. The caller handles pip fallback if uv is None.
+    """
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+    epy = _engine_venv_python(venv_dir)
+    if not epy.is_file():
+        print(f"  Creating isolated {label} environment ({venv_dir.name}) with uv …")
+        if _run(_uv_venv_cmd(uv, venv_dir, sys.executable)) != 0:
+            print(f"  ERROR: failed to create {venv_dir.name}.")
+            return False
+    print(f"  Installing {label} deps with uv …")
+    if _run(_uv_pip_install_cmd(uv, venv_dir, ["-r", str(requirements_file)])) != 0:
+        print(f"  ERROR: {label} dependency install failed.")
+        return False
+    index = envdetect.torch_index_url(cuda_tag) if cuda_tag else None
+    if index:
+        if torch_strategy == "pinned":
+            tv = _pip_pkg_version(epy, "torch")
+            av = _pip_pkg_version(epy, "torchaudio")
+            specs = []
+            if tv:
+                specs.append(f"torch=={tv}+{cuda_tag}")
+            if av:
+                specs.append(f"torchaudio=={av}+{cuda_tag}")
+            if not specs:
+                specs = ["torch", "torchaudio"]
+        else:
+            specs = ["torch", "torchaudio"]
+        print(f"  Installing the CUDA build of torch ({cuda_tag}) for GPU …")
+        if _run(_uv_pip_install_cmd(
+                uv, venv_dir,
+                ["--index-url", index, "--reinstall", *specs])) != 0:
+            print("  ERROR: CUDA torch install failed.")
+            return False
+    else:
+        print(f"  No matching torch CUDA build for this driver — {label} will "
+              "run on CPU (slow).")
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("ok\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"  ERROR: could not write ready marker: {exc}")
+        return False
+    print(f"  {label} environment ready.")
+    return True
+
+
 def _ensure_chatterbox_env() -> bool:
+    uv = _ensure_uv()
+    if uv is None:
+        return _ensure_chatterbox_env_pip()
+    cb_tag = _chatterbox_torch_tag(
+        envdetect.detect_cuda_tag(),
+        preferred_tag=main_venv_torch_tag(REPO_ROOT),
+    )
+    return _ensure_engine_env_uv(
+        uv,
+        BACKEND_DIR / "venv-chatterbox",
+        BACKEND_DIR / "requirements-chatterbox.txt",
+        chatterbox_ready_marker(REPO_ROOT),
+        "Chatterbox",
+        cb_tag,
+        torch_strategy="pinned",
+    )
+
+
+def _ensure_omnivoice_env() -> bool:
+    uv = _ensure_uv()
+    if uv is None:
+        return _ensure_omnivoice_env_pip()
+    return _ensure_engine_env_uv(
+        uv,
+        BACKEND_DIR / "venv-omnivoice",
+        BACKEND_DIR / "requirements-omnivoice.txt",
+        omnivoice_ready_marker(REPO_ROOT),
+        "OmniVoice",
+        envdetect.detect_omnivoice_cuda_tag(),
+        torch_strategy="newest",
+    )
+
+
+def _ensure_voxcpm_env() -> bool:
+    if not _python_supported_for_voxcpm(sys.version_info):
+        print("  ERROR: VoxCPM requires Python 3.10–3.12 (you have "
+              f"{sys.version_info.major}.{sys.version_info.minor}). "
+              "Install a supported Python and re-run.")
+        return False
+    uv = _ensure_uv()
+    if uv is None:
+        return _ensure_voxcpm_env_pip()
+    return _ensure_engine_env_uv(
+        uv,
+        BACKEND_DIR / "venv-voxcpm",
+        BACKEND_DIR / "requirements-voxcpm.txt",
+        voxcpm_ready_marker(REPO_ROOT),
+        "VoxCPM",
+        envdetect.detect_voxcpm_cuda_tag(),
+        torch_strategy="newest",
+    )
+
+
+def _ensure_qwen_env() -> bool:
+    uv = _ensure_uv()
+    if uv is None:
+        return _ensure_qwen_env_pip()
+    return _ensure_engine_env_uv(
+        uv,
+        BACKEND_DIR / "venv-qwen",
+        BACKEND_DIR / "requirements-qwen.txt",
+        qwen_ready_marker(REPO_ROOT),
+        "Qwen",
+        envdetect.detect_qwen_cuda_tag(),
+        torch_strategy="newest",
+    )
+
+
+def installed_engine_venvs(repo_root: Path):
+    """List (name, venv_dir, marker, ensure_fn) for engine venvs whose ready
+    marker exists — i.e. those safe to rebuild."""
+    backend = repo_root / "backend"
+    specs = [
+        ("chatterbox", backend / "venv-chatterbox",
+         chatterbox_ready_marker(repo_root), _ensure_chatterbox_env),
+        ("omnivoice", backend / "venv-omnivoice",
+         omnivoice_ready_marker(repo_root), _ensure_omnivoice_env),
+        ("voxcpm", backend / "venv-voxcpm",
+         voxcpm_ready_marker(repo_root), _ensure_voxcpm_env),
+        ("qwen", backend / "venv-qwen",
+         qwen_ready_marker(repo_root), _ensure_qwen_env),
+    ]
+    return [(n, vd, mk, fn) for (n, vd, mk, fn) in specs if mk.is_file()]
+
+
+def _dir_size_bytes(path: Path) -> int:
+    """Total size of files under `path` (0 if it doesn't exist)."""
+    total = 0
+    if not path.exists():
+        return 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += (Path(root) / f).stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def _ensure_chatterbox_env_pip() -> bool:
     """Create backend/venv-chatterbox and install chatterbox-tts into it.
 
     Chatterbox can't share the main venv (transformers pin conflict), so it
@@ -209,7 +477,7 @@ def _ensure_chatterbox_env() -> bool:
     return True
 
 
-def _ensure_omnivoice_env() -> bool:
+def _ensure_omnivoice_env_pip() -> bool:
     """Create backend/venv-omnivoice and install omnivoice into it.
 
     OmniVoice can't share any existing venv (transformers>=5.3.0 + torch 2.8),
@@ -266,7 +534,7 @@ def _ensure_omnivoice_env() -> bool:
     return True
 
 
-def _ensure_voxcpm_env() -> bool:
+def _ensure_voxcpm_env_pip() -> bool:
     """Create backend/venv-voxcpm and install voxcpm into it.
 
     VoxCPM needs torch>=2.5 / CUDA>=12 plus a heavy dependency tail, so it gets
@@ -325,7 +593,7 @@ def _ensure_voxcpm_env() -> bool:
     return True
 
 
-def _ensure_qwen_env() -> bool:
+def _ensure_qwen_env_pip() -> bool:
     """Create backend/venv-qwen and install qwen-tts into it.
 
     qwen-tts pins transformers==4.57.3 (incompatible with every other engine),
@@ -451,19 +719,26 @@ def cmd_setup(_args: argparse.Namespace) -> int:
             "3": envdetect.torch_index_url("cu118"),
             "4": None,
         }.get(choice, index)
-    pip_torch = [str(py), "-m", "pip", "install", "torch", "torchaudio"]
-    if index:
-        pip_torch += ["--index-url", index]
-    if _run(pip_torch) != 0:
-        print("ERROR: torch install failed. Re-run setup or install torch manually.")
-        return 1
-
-    # 3. backend requirements
-    print("\n[3/5] Installing backend dependencies …")
-    if _run([str(py), "-m", "pip", "install", "-r",
-             str(BACKEND_DIR / "requirements.txt")]) != 0:
-        print("ERROR: backend dependency install failed.")
-        return 1
+    # 3. torch + backend requirements — via uv when available (hardlinked from
+    #    the shared cache so the main venv's torch dedupes with the engine
+    #    venvs); pip is the fallback.
+    print("\n[3/5] Installing torch + backend dependencies …")
+    uv = _ensure_uv()
+    if uv is not None:
+        if not _install_main_deps_uv(uv, index):
+            print("ERROR: dependency install failed. Re-run setup.")
+            return 1
+    else:
+        pip_torch = [str(py), "-m", "pip", "install", "torch", "torchaudio"]
+        if index:
+            pip_torch += ["--index-url", index]
+        if _run(pip_torch) != 0:
+            print("ERROR: torch install failed. Re-run setup or install torch manually.")
+            return 1
+        if _run([str(py), "-m", "pip", "install", "-r",
+                 str(BACKEND_DIR / "requirements.txt")]) != 0:
+            print("ERROR: backend dependency install failed.")
+            return 1
 
     # 4. system deps + frontend
     print("\n[4/5] Checking system dependencies …")
@@ -572,6 +847,70 @@ def cmd_install_qwen(_args: argparse.Namespace) -> int:
     print(BANNER)
     ok = _ensure_qwen_env()
     return 0 if ok else 1
+
+
+# --------------------------------------------------------- optimize-venvs --
+def _rebuild_main_venv_uv() -> int:
+    """Recreate backend/venv and reinstall its deps via uv. studio.py runs on
+    the system Python, so removing the venv is safe when no server is running."""
+    shutil.rmtree(VENV_DIR, ignore_errors=True)
+    if _run([sys.executable, "-m", "venv", str(VENV_DIR)]) != 0:
+        print("  ERROR: failed to recreate backend/venv.")
+        return 1
+    _UV_RESOLVED.pop("uv", None)  # force re-install of uv into the fresh venv
+    uv = _ensure_uv()
+    if uv is None:
+        print("  ERROR: could not install uv into the rebuilt main venv.")
+        return 1
+    tag = envdetect.detect_cuda_tag()
+    index = envdetect.torch_index_url(tag)
+    return 0 if _install_main_deps_uv(uv, index) else 1
+
+
+def cmd_optimize_venvs(args: argparse.Namespace) -> int:
+    """Rebuild existing engine venvs via uv to reclaim disk (dedup via the
+    shared uv cache). Optionally rebuild the main venv with --include-main."""
+    print(BANNER)
+    if _ensure_uv() is None:
+        print("uv is unavailable and could not be installed — nothing to "
+              "optimize. (Engine venvs already use pip; no dedup possible.)")
+        return 1
+    present = installed_engine_venvs(REPO_ROOT)
+    if not present and not args.include_main:
+        print("No installed engine venvs found. Nothing to do.")
+        return 0
+
+    gb = 1024 * 1024 * 1024
+    # Logical footprint (informational). Note: after uv hardlinks packages from
+    # the shared cache, this sum barely changes — hardlinks report full size at
+    # every link. Real reclaimed space is the volume's FREE-space delta below.
+    logical = sum(_dir_size_bytes(p) for p in (REPO_ROOT / "backend").glob("venv*"))
+    print(f"Current venv footprint (logical): {logical / gb:.1f} GB")
+    free_before = shutil.disk_usage(str(BACKEND_DIR)).free
+
+    failed: list[str] = []
+    for name, venv_dir, _marker, ensure_fn in present:
+        print(f"\nRebuilding {name} ({venv_dir.name}) via uv …")
+        shutil.rmtree(venv_dir, ignore_errors=True)
+        if not ensure_fn():
+            print(f"  ERROR: {name} rebuild failed — reinstall it later "
+                  f"(studio.py install-{name}).")
+            failed.append(name)
+
+    if args.include_main:
+        print("\nRebuilding the main venv (backend/venv) via uv …")
+        if _rebuild_main_venv_uv() != 0:
+            failed.append("main")
+
+    free_after = shutil.disk_usage(str(BACKEND_DIR)).free
+    reclaimed = (free_after - free_before) / gb
+    print(f"\nDisk reclaimed on {BACKEND_DIR.anchor or BACKEND_DIR}: "
+          f"{reclaimed:.1f} GB free "
+          f"({'freed' if reclaimed >= 0 else 'used'}).")
+    if failed:
+        print("Rebuild failed for: " + ", ".join(failed))
+        return 1
+    return 0
 
 
 # --------------------------------------------------------------- update --
@@ -819,6 +1158,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("install-voxcpm", help="build the isolated VoxCPM env (non-interactive)")
     sub.add_parser("install-qwen", help="build the isolated Qwen env (non-interactive)")
 
+    p_opt = sub.add_parser("optimize-venvs",
+                           help="rebuild engine venvs via uv to reclaim disk")
+    p_opt.add_argument("--include-main", action="store_true",
+                       help="also rebuild the main backend/venv")
+
     p_update = sub.add_parser("update", help="check out a release tag, sync deps, rebuild frontend")
     p_update.add_argument("--tag", required=True, help="release tag to check out (e.g. v0.3.0)")
 
@@ -835,6 +1179,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_install_voxcpm(args)
     if args.command == "install-qwen":
         return cmd_install_qwen(args)
+    if args.command == "optimize-venvs":
+        return cmd_optimize_venvs(args)
     if args.command == "update":
         return cmd_update(args)
     if args.command == "start":
