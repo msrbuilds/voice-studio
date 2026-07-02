@@ -105,6 +105,53 @@ def qwen_ready_marker(repo_root: Path) -> Path:
     return repo_root / "backend" / "venv-qwen" / ".qwen-ready"
 
 
+def uv_executable_path(repo_root: Path) -> Path:
+    """Path to the `uv` binary installed inside the base backend/venv."""
+    venv = repo_root / "backend" / "venv"
+    if os.name == "nt":
+        return venv / "Scripts" / "uv.exe"
+    return venv / "bin" / "uv"
+
+
+def uv_cache_dir(repo_root: Path) -> Path:
+    """Repo-local uv cache, on the SAME volume as the venvs so uv hardlinks
+    (a cross-volume cache would silently fall back to copying — no dedup)."""
+    return repo_root / "backend" / ".uv-cache"
+
+
+# Memoized handle to the uv binary (None once we've decided uv is unavailable).
+_UV_RESOLVED: dict[str, Path | None] = {}
+
+
+def _ensure_uv() -> Path | None:
+    """Return a usable `uv` executable, installing it into backend/venv via pip
+    on first use. Sets UV_CACHE_DIR to the repo-local cache. Returns None if uv
+    can't be obtained — callers then fall back to the pip+venv path.
+    """
+    if "uv" in _UV_RESOLVED:
+        return _UV_RESOLVED["uv"]
+    uv = uv_executable_path(REPO_ROOT)
+    if not uv.is_file():
+        py = venv_python(REPO_ROOT)
+        if not py.is_file():
+            _UV_RESOLVED["uv"] = None
+            return None
+        print("  Installing uv into backend/venv (fast, deduplicated installs) …")
+        if _run([str(py), "-m", "pip", "install", "uv"]) != 0 or not uv.is_file():
+            print("  WARNING: could not install uv — falling back to pip.")
+            _UV_RESOLVED["uv"] = None
+            return None
+    cache = uv_cache_dir(REPO_ROOT)
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+        os.environ["UV_CACHE_DIR"] = str(cache)
+    except OSError as exc:
+        print(f"  WARNING: could not create uv cache dir {cache}: {exc} "
+              "(disk dedup may not apply).")
+    _UV_RESOLVED["uv"] = uv
+    return uv
+
+
 def _python_supported_for_voxcpm(version_info) -> bool:
     """VoxCPM (torchcodec/funasr) supports Python 3.10–3.12 only."""
     major, minor = version_info[0], version_info[1]

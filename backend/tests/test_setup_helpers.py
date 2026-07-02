@@ -9,6 +9,21 @@ sys.path.insert(0, str(REPO_ROOT))
 from tools import envdetect  # noqa: E402
 from tools.envdetect import detect_voxcpm_cuda_tag, cuda_version_to_voxcpm_tag  # noqa: E402
 from tools.envdetect import detect_qwen_cuda_tag, cuda_version_to_qwen_tag  # noqa: E402
+import studio  # noqa: E402
+
+
+def test_uv_executable_path():
+    # Test current-OS behavior without flipping os.name globally (that breaks
+    # pathlib). Mirrors how the existing venv_python helper is (un)tested.
+    p = studio.uv_executable_path(Path("/repo"))
+    if studio.os.name == "nt":
+        assert p == Path("/repo/backend/venv/Scripts/uv.exe")
+    else:
+        assert p == Path("/repo/backend/venv/bin/uv")
+
+
+def test_uv_cache_dir():
+    assert studio.uv_cache_dir(Path("/repo")) == Path("/repo/backend/.uv-cache")
 
 _SAMPLE_SMI = """
 +-----------------------------------------------------------------------------+
