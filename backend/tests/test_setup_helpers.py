@@ -164,9 +164,17 @@ def test_parse_model_selection_rejects_unknown():
 
 
 def test_catalog_has_expected_engines():
-    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen"}
+    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen", "acestep"}
     assert dm.MODEL_CATALOG["kokoro"]["repo_id"] == "hexgrad/Kokoro-82M"
     assert dm.MODEL_CATALOG["omnivoice"]["repo_id"] == "k2-fsa/OmniVoice"
+
+
+def test_acestep_in_catalog_and_downloadable():
+    from backend.services.model_download import DOWNLOADABLE, ACESTEP_IGNORE_PATTERNS
+    assert dm.MODEL_CATALOG["acestep"]["repo_id"] == "ACE-Step/Ace-Step1.5"
+    assert "acestep" in DOWNLOADABLE
+    # Core-only: the 1.7B LM subdir is excluded from the default fetch.
+    assert any("acestep-5Hz-lm-1.7B" in p for p in ACESTEP_IGNORE_PATTERNS)
 
 
 def test_mount_frontend_serves_index_when_dist_present(tmp_path):
