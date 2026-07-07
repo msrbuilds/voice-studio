@@ -7,7 +7,7 @@ export interface EngineLanguage {
   label: string;
 }
 
-export type ProjectMode = "tts" | "podcast";
+export type ProjectMode = "tts" | "podcast" | "music";
 
 export interface TtsBuffer {
   text: string;
@@ -17,6 +17,15 @@ export interface TtsBuffer {
   // ignore these. Mode is derived when unset (see lib/voiceModes.ts).
   omnivoiceMode?: "clone" | "design" | "auto";
   voiceDesign?: string;
+}
+
+export interface MusicBuffer {
+  caption: string;
+  lyrics: string;
+  instrumental: boolean;
+  durationSec: number;
+  steps: number;
+  seed: number;
 }
 
 export interface Voice {
@@ -73,6 +82,7 @@ export interface EngineInfo {
   supports_voice_modes: boolean;
   supports_style_clone: boolean;
   supports_style_prompt: boolean;
+  supports_music?: boolean;
 }
 
 export interface InstallStatus {
