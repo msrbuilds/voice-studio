@@ -347,6 +347,30 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
+def test_acestep_build_generate_msg():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="dreamy synthwave",
+                             lyrics="", instrumental=True, duration_sec=20.0,
+                             music_steps=8, music_seed=7, bpm=110)
+    msg = eng._build_generate_msg(req, "C:/tmp/out.wav")
+    assert msg["op"] == "generate" and msg["caption"] == "dreamy synthwave"
+    assert msg["instrumental"] is True and msg["duration_sec"] == 20.0
+    assert msg["steps"] == 8 and msg["seed"] == 7 and msg["bpm"] == 110
+    assert msg["out_wav"] == "C:/tmp/out.wav"
+
+
+def test_acestep_capabilities():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    eng = AceStepEngine()
+    assert eng.supports_music() is True
+    assert eng.supports_voice_cloning() is False
+    assert eng.sample_rate() == 48000
+    assert eng.max_speakers() == 0
+    assert eng.name == "acestep"
+
+
 if __name__ == "__main__":
     import tempfile
 
