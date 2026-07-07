@@ -178,6 +178,74 @@ def _python_supported_for_voxcpm(version_info) -> bool:
     return major == 3 and 10 <= minor <= 12
 
 
+# --------------------------------------------------------------- ACE-Step --
+ACESTEP_REPO_URL = "https://github.com/ace-step/ACE-Step-1.5"
+ACESTEP_PIN = "6d467e4b5081ccb0abf1ec1bf4fdf9051a2d34b0"  # spike-validated commit
+
+
+def acestep_repo_dir(repo_root: Path) -> Path:
+    return repo_root / "backend" / "vendor" / "ace-step"
+
+
+def acestep_ready_marker(repo_root: Path) -> Path:
+    return acestep_repo_dir(repo_root) / ".acestep-ready"
+
+
+def acestep_venv_python(repo_root: Path) -> Path:
+    venv = acestep_repo_dir(repo_root) / ".venv"
+    if os.name == "nt":
+        return venv / "Scripts" / "python.exe"
+    return venv / "bin" / "python"
+
+
+def _acestep_clone_cmd(dest: Path) -> list[str]:
+    return ["git", "clone", ACESTEP_REPO_URL, str(dest)]
+
+
+def _ensure_acestep_env() -> bool:
+    """Clone ACE-Step (pinned) into backend/vendor/ace-step and build its venv
+    via `uv sync`. Returns True on full success."""
+    if not _python_supported_for_voxcpm(sys.version_info):  # same 3.10–3.12 gate
+        print("  ERROR: ACE-Step requires Python 3.11–3.12 (you have "
+              f"{sys.version_info.major}.{sys.version_info.minor}).")
+        return False
+    marker = acestep_ready_marker(REPO_ROOT)
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+    repo = acestep_repo_dir(REPO_ROOT)
+    if not (repo / "pyproject.toml").is_file():
+        repo.parent.mkdir(parents=True, exist_ok=True)
+        print("  Cloning ACE-Step 1.5 …")
+        if _run(_acestep_clone_cmd(repo)) != 0:
+            print("  ERROR: git clone failed.")
+            return False
+    if _run(["git", "-C", str(repo), "checkout", ACESTEP_PIN]) != 0:
+        print("  ERROR: failed to check out the pinned ACE-Step commit.")
+        return False
+    uv = _ensure_uv()
+    if uv is None:
+        print("  ERROR: uv is required to build the ACE-Step env.")
+        return False
+    print("  Building ACE-Step env with uv sync (torch 2.7+cu128; several GB) …")
+    if _run([str(uv), "sync", "--python", "3.11"], cwd=repo) != 0:
+        print("  ERROR: uv sync failed.")
+        return False
+    try:
+        marker.write_text("ok\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"  ERROR: could not write ready marker: {exc}")
+        return False
+    print("  ACE-Step environment ready.")
+    return True
+
+
+def cmd_install_acestep(_args: argparse.Namespace) -> int:
+    print(BANNER)
+    return 0 if _ensure_acestep_env() else 1
+
+
 def main_venv_torch_tag(repo_root: Path) -> str | None:
     """CUDA build tag (e.g. 'cu124') of the torch installed in the main venv,
     read from its dist-info directory name (no torch import). None if not found
@@ -1157,6 +1225,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("install-omnivoice", help="build the isolated OmniVoice env (non-interactive)")
     sub.add_parser("install-voxcpm", help="build the isolated VoxCPM env (non-interactive)")
     sub.add_parser("install-qwen", help="build the isolated Qwen env (non-interactive)")
+    sub.add_parser("install-acestep", help="clone + build the ACE-Step music env (non-interactive)")
 
     p_opt = sub.add_parser("optimize-venvs",
                            help="rebuild engine venvs via uv to reclaim disk")
@@ -1179,6 +1248,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_install_voxcpm(args)
     if args.command == "install-qwen":
         return cmd_install_qwen(args)
+    if args.command == "install-acestep":
+        return cmd_install_acestep(args)
     if args.command == "optimize-venvs":
         return cmd_optimize_venvs(args)
     if args.command == "update":

@@ -219,6 +219,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "omnivoice": EngineEnvInstaller("install-omnivoice"),
         "voxcpm": EngineEnvInstaller("install-voxcpm"),
         "qwen": EngineEnvInstaller("install-qwen"),
+        "acestep": EngineEnvInstaller("install-acestep"),
     }
     app.state.model_downloader = ModelDownloader()
     app.state.model_deleter = ModelDeleter(em=engine_manager)
@@ -227,6 +228,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "omnivoice": EngineEnvUninstaller("omnivoice", em=engine_manager),
         "voxcpm": EngineEnvUninstaller("voxcpm", em=engine_manager),
         "qwen": EngineEnvUninstaller("qwen", em=engine_manager),
+        "acestep": EngineEnvUninstaller("acestep", em=engine_manager),
     }
     app.state.update_checker = UpdateChecker(get_version())
     app.state.update_runner = UpdateRunner()

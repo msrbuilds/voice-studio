@@ -370,3 +370,23 @@ def test_worktree_is_clean():
     assert studio.worktree_is_clean("   \n  ") is True
     assert studio.worktree_is_clean(" M backend/app.py\n") is False
     assert studio.worktree_is_clean("?? newfile\n") is False
+
+
+def test_acestep_paths():
+    assert studio.acestep_repo_dir(Path("/repo")) == Path("/repo/backend/vendor/ace-step")
+    assert studio.acestep_ready_marker(Path("/repo")) == Path("/repo/backend/vendor/ace-step/.acestep-ready")
+
+
+def test_acestep_clone_cmd():
+    dest = Path("/repo/backend/vendor/ace-step")
+    cmd = studio._acestep_clone_cmd(dest)
+    assert cmd[:2] == ["git", "clone"]
+    assert studio.ACESTEP_REPO_URL in cmd
+    assert str(dest) in cmd
+
+
+def test_install_acestep_subcommand(monkeypatch):
+    monkeypatch.setattr(studio, "_ensure_acestep_env", lambda: True)
+    assert studio.main(["install-acestep"]) == 0
+    monkeypatch.setattr(studio, "_ensure_acestep_env", lambda: False)
+    assert studio.main(["install-acestep"]) == 1
