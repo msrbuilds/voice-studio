@@ -334,6 +334,19 @@ def test_system_stats(tmp_path):
     assert body["vram"] is None or body["vram"]["total_bytes"] > 0
 
 
+def test_engine_synth_request_has_music_fields():
+    from backend.core.engines import EngineSynthRequest
+    r = EngineSynthRequest(text="", voice_id="", caption="lofi", lyrics="[Instrumental]",
+                           instrumental=True, duration_sec=30.0, music_steps=8,
+                           music_seed=42, bpm=120)
+    assert r.caption == "lofi" and r.instrumental is True and r.duration_sec == 30.0
+
+
+def test_engine_supports_music_default_false():
+    from backend.core.engines.qwen_engine import QwenEngine
+    assert QwenEngine().supports_music() is False
+
+
 if __name__ == "__main__":
     import tempfile
 
