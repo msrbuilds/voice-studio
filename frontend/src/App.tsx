@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 
 import { ConfirmProvider } from "@/components/ConfirmProvider";
+import { MusicEditor } from "@/components/MusicEditor";
 import { InstallEngineDialog } from "@/components/InstallEngineDialog";
 import { DownloadModelDialog } from "@/components/DownloadModelDialog";
 import { DeleteWeightsDialog } from "@/components/DeleteWeightsDialog";
@@ -262,6 +263,29 @@ export default function App() {
     const text = err instanceof ApiError ? err.message : err instanceof Error ? err.message : fallback;
     setToast({ kind: "error", text });
   }, []);
+
+  // Music mode requires the ACE-Step engine. Ready = its venv + core weights
+  // exist; the /api/music endpoint loads it on demand.
+  const aceInfo = engines.find((e) => e.name === "acestep") ?? null;
+  const musicEngineReady = !!aceInfo && aceInfo.installed && aceInfo.downloaded !== false;
+
+  // Entering Music mode: set up ACE-Step. Install → download → activate (which
+  // unloads the current TTS engine, keeping one model in VRAM).
+  useEffect(() => {
+    if (pm.mode !== "music" || !aceInfo) return;
+    if (!aceInfo.installed) {
+      setInstallEngine("acestep");
+      return;
+    }
+    if (aceInfo.downloaded === false) {
+      setDownloadEngine("acestep");
+      return;
+    }
+    if (activeEngine !== "acestep") {
+      void setActiveEngine("acestep").catch((err) => showError(err, "Could not activate ACE-Step"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pm.mode, aceInfo?.installed, aceInfo?.downloaded, activeEngine]);
 
   // Filter the global voice catalog down to the active engine. The
   // sidebar shouldn't offer Kokoro's voices when VibeVoice is active
@@ -810,18 +834,20 @@ export default function App() {
   return (
     <ConfirmProvider isDark={isDark}>
     <div className={`flex h-screen overflow-hidden ${isDark ? "bg-zinc-950" : "bg-gray-50"}`}>
-      <VoiceLibrary
-        voices={displayedVoices}
-        config={config}
-        theme={theme}
-        onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-        onUploadVoice={uploadVoice}
-        onRemoveVoice={removeVoice}
-        onUpdateVoiceMeta={handleUpdateVoiceMeta}
-        supportsVoiceCloning={supportsVoiceCloning}
-        selectedVoiceId={pm.mode === "tts" ? pm.tts.voiceId : undefined}
-        onSelectVoice={pm.mode === "tts" ? pm.setTtsVoice : undefined}
-      />
+      {pm.mode !== "music" && (
+        <VoiceLibrary
+          voices={displayedVoices}
+          config={config}
+          theme={theme}
+          onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          onUploadVoice={uploadVoice}
+          onRemoveVoice={removeVoice}
+          onUpdateVoiceMeta={handleUpdateVoiceMeta}
+          supportsVoiceCloning={supportsVoiceCloning}
+          selectedVoiceId={pm.mode === "tts" ? pm.tts.voiceId : undefined}
+          onSelectVoice={pm.mode === "tts" ? pm.setTtsVoice : undefined}
+        />
+      )}
 
       {/* MIDDLE column: sticky toolbar, scroll body, sticky player */}
       <main className="flex-1 flex flex-col min-w-0 @container">
@@ -885,6 +911,13 @@ export default function App() {
               onPlay={() => void playTts()}
             />
           </div>
+        ) : pm.mode === "music" ? (
+          <MusicEditor
+            isDark={isDark}
+            buffer={pm.music}
+            onChange={pm.setMusic}
+            engineReady={musicEngineReady}
+          />
         ) : (
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <div className="max-w-5xl mx-auto">
