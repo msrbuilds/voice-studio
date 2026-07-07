@@ -80,6 +80,19 @@ class SynthRequest:
 
 
 @dataclass
+class MusicRequest:
+    """A text-to-music request (ACE-Step). No speakers/voices."""
+    caption: str
+    lyrics: str = ""
+    instrumental: bool = True
+    duration_sec: float = 30.0
+    steps: int = 8
+    seed: int = -1
+    bpm: int | None = None
+    force_regenerate: bool = False
+
+
+@dataclass
 class SynthResult:
     wav_bytes: bytes
     sample_rate: int
@@ -489,6 +502,54 @@ class SynthService:
             cache_hash=cache_hash_for_write,
             cache_hit=False,
             engine=engine_name,
+        )
+
+    # -- music (ACE-Step) --
+    def synthesize_music(self, req: MusicRequest) -> SynthResult:
+        """Generate music via the ACE-Step engine, reusing the same GPU lock +
+        executor + cache as TTS (so music and speech never run concurrently).
+        Bypasses speaker/voice resolution entirely."""
+        import hashlib
+        import json as _json
+
+        from ..core.exceptions import BackendError
+
+        try:
+            engine = self._engines.get_engine("acestep")
+        except KeyError as exc:  # EngineNotFound subclasses KeyError
+            raise BackendError("music engine (acestep) is not available",
+                               code="engine_unavailable") from exc
+        if not engine.supports_music():
+            raise BackendError("active music engine does not support music",
+                               code="engine_unavailable")
+        if not engine.is_loaded():
+            engine.load()
+
+        engine_req = EngineSynthRequest(
+            text="", voice_id="",
+            caption=req.caption, lyrics=req.lyrics, instrumental=req.instrumental,
+            duration_sec=req.duration_sec, music_steps=req.steps,
+            music_seed=req.seed, bpm=req.bpm,
+        )
+        key_src = _json.dumps({
+            "engine": "acestep", "caption": req.caption, "lyrics": req.lyrics,
+            "instrumental": req.instrumental, "duration": round(req.duration_sec, 2),
+            "steps": req.steps, "seed": req.seed, "bpm": req.bpm,
+        }, sort_keys=True)
+        cache_hash = "music-" + hashlib.sha256(key_src.encode()).hexdigest()[:24]
+
+        if not req.force_regenerate and self._cache is not None and self._cache.enabled:
+            hit = self._cache.get(cache_hash)
+            if hit is not None:
+                return SynthResult(
+                    wav_bytes=hit.wav_path.read_bytes(), sample_rate=hit.sample_rate,
+                    duration_sec=hit.duration_sec, inference_ms=hit.inference_ms,
+                    cache_hash=cache_hash, cache_hit=True, engine="acestep",
+                )
+
+        return self._synth_one(
+            engine, "acestep", engine_req, cache_hash,
+            cache_text=req.caption, cache_voice=None,
         )
 
 

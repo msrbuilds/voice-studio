@@ -33,6 +33,7 @@ from .api.download import router as download_router
 from .api.engines import router as engines_router
 from .api.health import router as health_router
 from .api.stream import router as stream_router
+from .api.music import router as music_router
 from .api.synthesize import router as synthesize_router
 from .api.system import router as system_router
 from .api.update import router as update_router
@@ -243,6 +244,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(stream_router)
     app.include_router(update_router)
     app.include_router(system_router)
+    app.include_router(music_router)
 
     # ---- static frontend (prod mode only; no-op if frontend/dist is absent)
     _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

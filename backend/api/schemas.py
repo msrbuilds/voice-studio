@@ -169,6 +169,20 @@ class SynthRequestBody(BaseModel):
     seed: int | None = Field(default=None, ge=0)
 
 
+# ---- music (ACE-Step) ----
+
+class MusicRequestBody(BaseModel):
+    caption: str = Field(..., min_length=1, max_length=512,
+                         description="Style/genre prompt for the music")
+    lyrics: str = Field("", max_length=4096, description="Lyrics; ignored if instrumental")
+    instrumental: bool = True
+    duration_sec: float = Field(default=30.0, ge=10.0, le=240.0)
+    steps: int = Field(default=8, ge=1, le=60)
+    seed: int = Field(default=-1)
+    bpm: int | None = Field(default=None, ge=30, le=300)
+    force_regenerate: bool = False
+
+
 class SynthBase64Response(BaseModel):
     audio_b64: str
     sample_rate: int
