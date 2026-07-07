@@ -371,6 +371,17 @@ def test_acestep_capabilities():
     assert eng.name == "acestep"
 
 
+def test_acestep_registered_and_music_flag(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.get("/api/engines")
+    assert r.status_code == 200
+    engines = {e["name"]: e for e in r.json()["engines"]}
+    assert "acestep" in engines
+    assert engines["acestep"]["supports_music"] is True
+    # Speech engines report False.
+    assert engines["vibevoice"]["supports_music"] is False
+
+
 if __name__ == "__main__":
     import tempfile
 
