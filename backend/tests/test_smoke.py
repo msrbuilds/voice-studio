@@ -429,6 +429,21 @@ def test_acestep_lm_downloaded(tmp_path, monkeypatch):
     assert eng.lm_downloaded() is True
 
 
+def test_acestep_generate_msg_extract():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="drums", task_type="extract",
+                             src_audio="C:/tmp/s.wav", track_name="drums", track_classes="")
+    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
+    assert msg["task_type"] == "extract" and msg["track_name"] == "drums"
+    assert msg["track_classes"] == ""
+
+    from backend.api.schemas import MusicRequestBody
+    b = MusicRequestBody(caption="x", task_type="complete", track_classes=["drums", "bass"])
+    assert b.task_type == "complete" and b.track_classes == ["drums", "bass"]
+
+
 def test_acestep_generate_msg_cover():
     from backend.core.engines.ace_step_engine import AceStepEngine
     from backend.core.engines import EngineSynthRequest
@@ -568,6 +583,94 @@ def test_music_cover_missing_source(tmp_path):
     client = _make_client(tmp_path / "v", tmp_path / "u")
     r = client.post("/api/music/generate", json={"caption": "x", "task_type": "cover"})
     assert r.status_code == 400
+
+
+def test_music_extract_requires_base(tmp_path):
+    import io
+    import numpy as np
+    import soundfile as sf
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    em = client.app.state.engine_manager
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def sample_rate(self): return 48000
+        def base_downloaded(self): return False
+        def generate_batch(self, req, count): raise AssertionError("should not reach")
+    em._engines["acestep"] = _StubAce()
+
+    buf = io.BytesIO(); sf.write(buf, np.zeros(48000, dtype=np.float32), 48000, format="WAV"); buf.seek(0)
+    sid = client.post("/api/music/upload", files={"file": ("s.wav", buf.read(), "audio/wav")}).json()["id"]
+    r = client.post("/api/music/generate", json={"caption": "x", "task_type": "extract",
+                                                 "src_audio_id": sid, "track_name": "drums"})
+    assert r.status_code == 400
+
+
+def test_music_extract_threads_track(tmp_path):
+    import io
+    import numpy as np
+    import soundfile as sf
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    em = client.app.state.engine_manager
+    captured = {}
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def sample_rate(self): return 48000
+        def base_downloaded(self): return True
+        def generate_batch(self, req, count):
+            captured["task_type"] = req.task_type
+            captured["track_name"] = req.track_name
+            captured["track_classes"] = req.track_classes
+            from backend.core.engines import EngineResult, wrap_pcm_as_wav
+            wav = wrap_pcm_as_wav(np.zeros(48000, dtype=np.float32), 48000)
+            return [EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)]
+    em._engines["acestep"] = _StubAce()
+
+    buf = io.BytesIO(); sf.write(buf, np.zeros(48000, dtype=np.float32), 48000, format="WAV"); buf.seek(0)
+    sid = client.post("/api/music/upload", files={"file": ("s.wav", buf.read(), "audio/wav")}).json()["id"]
+    r = client.post("/api/music/generate", json={"caption": "full band", "task_type": "complete",
+                                                 "src_audio_id": sid, "track_classes": ["drums", "bass"]})
+    assert r.status_code == 200, r.text
+    assert captured["task_type"] == "complete"
+    assert captured["track_classes"] == "drums,bass"
+
+
+def test_base_downloader_lifecycle(tmp_path):
+    from backend.services.base_model_download import BaseModelDownloader
+    calls = {}
+
+    def fake_runner(repo_id, local_dir, progress):
+        calls["repo"] = repo_id
+        progress.set_total(100)
+        progress.add_bytes(100)
+        progress.log("done")
+    dl = BaseModelDownloader(models_dir=tmp_path, runner=fake_runner)
+    assert dl.status()["state"] == "idle"
+    dl.start()
+    import time as _t
+    for _ in range(50):
+        if dl.status()["state"] in ("done", "error"):
+            break
+        _t.sleep(0.02)
+    s = dl.status()
+    assert s["state"] == "done" and s["percent"] == 100.0
+    assert calls["repo"] == "ACE-Step/acestep-v15-base"
+    assert dl.target_dir() == tmp_path / "acestep" / "acestep-v15-base"
+
+
+def test_base_status_endpoint(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.get("/api/music/base/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert "downloaded" in body and "state" in body
 
 
 def test_music_request_body_new_fields():

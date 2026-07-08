@@ -101,6 +101,8 @@ class MusicRequest:
     cover_strength: float = 0.5
     repaint_start: float = 0.0
     repaint_end: float = -1.0
+    track_name: str = ""
+    track_classes: str = ""   # comma-joined
     force_regenerate: bool = False
 
 
@@ -551,6 +553,8 @@ class SynthService:
             task_type=req.task_type, src_audio=(req.src_audio or None),
             cover_strength=req.cover_strength,
             repaint_start=req.repaint_start, repaint_end=req.repaint_end,
+            track_name=(req.track_name or None),
+            track_classes=(req.track_classes or None),
         )
         count = max(1, min(4, int(req.count)))
 
@@ -566,6 +570,7 @@ class SynthService:
             "task_type": req.task_type, "src_audio_id": req.src_audio_id,
             "cover_strength": req.cover_strength,
             "repaint_start": req.repaint_start, "repaint_end": req.repaint_end,
+            "track_name": req.track_name, "track_classes": req.track_classes,
         }, sort_keys=True)
 
         out: list[SynthResult] = []

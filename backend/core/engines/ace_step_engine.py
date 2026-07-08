@@ -127,6 +127,11 @@ class AceStepEngine(Engine):
             for d in ("acestep-v15-turbo", "vae", "Qwen3-Embedding-0.6B")
         )
 
+    def base_downloaded(self) -> bool:
+        """True if the optional 2B base DiT (acestep-v15-base) is present."""
+        return (_BACKEND_ROOT / "models" / "acestep" / "acestep-v15-base"
+                / "model.safetensors").is_file()
+
     def lm_downloaded(self) -> bool:
         lm = _BACKEND_ROOT / "models" / "acestep" / "acestep-5Hz-lm-0.6B"
         return (lm / "config.json").is_file()
@@ -185,6 +190,8 @@ class AceStepEngine(Engine):
             "cover_strength": float(req.cover_strength if req.cover_strength is not None else 0.5),
             "repaint_start": float(req.repaint_start or 0.0),
             "repaint_end": float(req.repaint_end if req.repaint_end is not None else -1.0),
+            "track_name": (req.track_name or ""),
+            "track_classes": (req.track_classes or ""),
         }
 
     def generate_batch(self, req: EngineSynthRequest, count: int) -> list[EngineResult]:

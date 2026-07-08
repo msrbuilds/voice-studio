@@ -108,6 +108,8 @@ class EngineSynthRequest:
     cover_strength: float | None = None  # 0.0–1.0; 0.2 = loose restyle
     repaint_start: float | None = None   # seconds
     repaint_end: float | None = None     # seconds; -1 = to end
+    track_name: str | None = None        # extract/lego: one of TRACK_NAMES
+    track_classes: str | None = None     # complete: comma-joined track classes
 
 
 class Engine(abc.ABC):

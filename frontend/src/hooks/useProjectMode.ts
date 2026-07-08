@@ -26,6 +26,8 @@ const EMPTY_MUSIC: MusicBuffer = {
   coverStrength: 0.5,
   repaintStart: 0,
   repaintEnd: -1,
+  trackName: "drums",
+  trackClasses: [],
 };
 
 function readMode(): ProjectMode | null {

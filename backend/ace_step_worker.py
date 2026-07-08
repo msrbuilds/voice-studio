@@ -11,7 +11,8 @@ Protocol:
           "seed":<int>,"bpm":<int|null>,"keyscale":<str>,"timesignature":<str>,
           "fade_in":<float>,"fade_out":<float>,"thinking":<bool>,
           "task_type":<str>,"src_audio":<str>,"cover_strength":<float>,
-          "repaint_start":<float>,"repaint_end":<float>}
+          "repaint_start":<float>,"repaint_end":<float>,
+          "track_name":<str>,"track_classes":<str>}
          {"op":"inspire","query":<str>,"instrumental":<bool>,"language":<str>}
          {"op":"shutdown"}
   stdout {"ok":true,"device":"cuda"}                                   (load)
@@ -60,6 +61,7 @@ def _norm_device(device):
 class _Worker:
     def __init__(self) -> None:
         self._dit = None
+        self._dit_config = None
         self._llm = None
         self._project_root = os.environ.get("ACESTEP_PROJECT_ROOT") or os.getcwd()
 
@@ -129,7 +131,9 @@ class _Worker:
         }}
 
     def _load(self, req: dict) -> dict:
-        device = _norm_device(req.get("device"))
+        return self._load_dit("acestep-v15-turbo", _norm_device(req.get("device")))
+
+    def _load_dit(self, config_path: str, device: str) -> dict:
         try:
             from acestep.handler import AceStepHandler
         except Exception as exc:  # noqa: BLE001
@@ -138,16 +142,21 @@ class _Worker:
             self._dit = AceStepHandler()
             msg, ok = self._dit.initialize_service(
                 project_root=self._project_root,
-                config_path="acestep-v15-turbo",
+                config_path=config_path,
                 device=device,
                 use_mlx_dit=False,
                 offload_to_cpu=False,
             )
         except Exception as exc:  # noqa: BLE001
+            self._dit = None
+            self._dit_config = None
             return {"ok": False, "error": f"init failed: {exc}"}
         if not ok:
+            self._dit = None
+            self._dit_config = None
             return {"ok": False, "error": f"init returned failure: {msg}"}
-        _log(f"[acestep-worker] DiT initialized on {device}")
+        self._dit_config = config_path
+        _log(f"[acestep-worker] DiT '{config_path}' initialized on {device}")
         return {"ok": True, "device": device}
 
     def _generate(self, req: dict) -> dict:
@@ -169,13 +178,45 @@ class _Worker:
         base_seed = int(req.get("seed") if req.get("seed") is not None else -1)
         task_type = (req.get("task_type") or "text2music").strip() or "text2music"
         src_audio = (req.get("src_audio") or "").strip() or None
+
+        # Switch the DiT variant on demand: base for extract/lego/complete,
+        # turbo otherwise. Only one DiT lives in VRAM at a time.
+        BASE_TASKS = {"extract", "lego", "complete"}
+        needed = "acestep-v15-base" if task_type in BASE_TASKS else "acestep-v15-turbo"
+        if self._dit_config != needed:
+            import torch as _torch
+            self._dit = None
+            try:
+                _torch.cuda.empty_cache()
+            except Exception:  # noqa: BLE001
+                pass
+            sw = self._load_dit(needed, _norm_device(os.environ.get("ACESTEP_DEVICE") or "cuda"))
+            if not sw.get("ok"):
+                return sw
+
+        # Build the task instruction (track selection wires through here for base
+        # tasks) and floor the step count for the 50-step base model.
+        instruction = None
+        steps = int(req.get("steps") or 8)
+        if task_type in BASE_TASKS:
+            from acestep.constants import TASK_INSTRUCTIONS
+            track_name = (req.get("track_name") or "").strip()
+            track_classes = (req.get("track_classes") or "").strip()
+            if task_type == "complete":
+                instruction = (TASK_INSTRUCTIONS["complete"].format(TRACK_CLASSES=track_classes)
+                               if track_classes else TASK_INSTRUCTIONS["complete_default"])
+            else:  # extract / lego
+                instruction = (TASK_INSTRUCTIONS[task_type].format(TRACK_NAME=track_name)
+                               if track_name else TASK_INSTRUCTIONS[f"{task_type}_default"])
+            steps = max(steps, 25)  # base is a 50-step model; floor for quality
+
         params = GenerationParams(
             task_type=task_type,
             caption=caption,
             lyrics=lyrics,
             instrumental=instrumental,
             duration=float(req.get("duration_sec") or 30.0),
-            inference_steps=int(req.get("steps") or 8),
+            inference_steps=steps,
             seed=base_seed,
             bpm=(int(req["bpm"]) if req.get("bpm") else None),
             keyscale=(req.get("keyscale") or ""),
@@ -188,6 +229,8 @@ class _Worker:
             repainting_end=float(req.get("repaint_end") if req.get("repaint_end") is not None else -1.0),
             thinking=False,  # no LM
         )
+        if instruction is not None:
+            params.instruction = instruction
         config = GenerationConfig(batch_size=batch_size, audio_format="wav")
         import glob
         import shutil

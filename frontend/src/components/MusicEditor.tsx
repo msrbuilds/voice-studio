@@ -3,8 +3,12 @@ import { Loader2, Music, Download, Sparkles, Upload, X } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 import { generateMusic, inspireMusic, musicClipAudioUrl, musicDownloadUrl, musicSourceUrl, uploadMusicSource, type MusicClip } from "@/lib/api";
 import { keyToParam, timeSigToNumerator, normalizeKey, numeratorToTimeSig } from "@/lib/musicOptions";
+import { TRACK_OPTIONS } from "@/lib/musicTracks";
 import { useLmStatus } from "@/hooks/useLmStatus";
+import { useBaseStatus } from "@/hooks/useBaseStatus";
 import type { MusicBuffer } from "@/types/models";
+
+const BASE_MODES = ["extract", "lego", "complete"] as const;
 
 interface Props {
   isDark: boolean;
@@ -26,6 +30,8 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
 
   const { status: lm, download: downloadLm } = useLmStatus();
   const lmReady = !!lm?.downloaded;
+  const { status: base, download: downloadBase } = useBaseStatus();
+  const baseReady = !!base?.downloaded;
   const [query, setQuery] = useState("");
   const [inspiring, setInspiring] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -63,9 +69,11 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
 
   const needsSource = buffer.subMode !== "create";
   const sourceReady = !needsSource || !!buffer.srcAudioId;
+  const isBaseMode = (BASE_MODES as readonly string[]).includes(buffer.subMode);
+  const baseGateOk = !isBaseMode || baseReady;
 
   const onGenerate = async () => {
-    if (busy || !buffer.caption.trim() || !sourceReady) return;
+    if (busy || !buffer.caption.trim() || !sourceReady || !baseGateOk) return;
     setBusy(true);
     setError(null);
     setElapsed(0);
@@ -91,6 +99,8 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
         cover_strength: buffer.coverStrength,
         repaint_start: buffer.repaintStart,
         repaint_end: buffer.repaintEnd,
+        track_name: buffer.trackName,
+        track_classes: buffer.trackClasses,
       });
       setClips(result);
     } catch (e) {
@@ -104,24 +114,65 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
   return (
     <div className="flex-1 overflow-y-auto px-6 py-4">
       <div className="max-w-3xl mx-auto space-y-4">
-        <div className={`inline-flex gap-1 p-1 rounded-lg ${isDark ? "bg-zinc-800/40" : "bg-gray-100"}`}>
-          {(["create", "cover", "repaint"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => onChange({ subMode: m })}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize ${
-                buffer.subMode === m
-                  ? "bg-orange-600 text-white"
-                  : isDark
-                    ? "text-zinc-400 hover:text-zinc-200"
-                    : "text-gray-600 hover:text-gray-800"
-              } ${focusRing}`}
-            >
-              {m}
-            </button>
-          ))}
+        <div className="space-y-2">
+          <div className={`inline-flex gap-1 p-1 rounded-lg ${isDark ? "bg-zinc-800/40" : "bg-gray-100"}`}>
+            {(["create", "cover", "repaint"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => onChange({ subMode: m })}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize ${
+                  buffer.subMode === m
+                    ? "bg-orange-600 text-white"
+                    : isDark
+                      ? "text-zinc-400 hover:text-zinc-200"
+                      : "text-gray-600 hover:text-gray-800"
+                } ${focusRing}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <div>
+            <div className={`text-[11px] uppercase tracking-wide mb-1 ${sub}`}>Advanced — 2B base model</div>
+            <div className={`inline-flex gap-1 p-1 rounded-lg ${isDark ? "bg-zinc-800/40" : "bg-gray-100"}`}>
+              {BASE_MODES.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => onChange({ subMode: m })}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize ${
+                    buffer.subMode === m
+                      ? "bg-orange-600 text-white"
+                      : isDark
+                        ? "text-zinc-400 hover:text-zinc-200"
+                        : "text-gray-600 hover:text-gray-800"
+                  } ${focusRing}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
+
+        {isBaseMode && !baseReady && (
+          <div className={`rounded-lg border p-3 ${isDark ? "border-zinc-800 bg-zinc-900" : "border-gray-200 bg-gray-50"}`}>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs ${sub}`}>
+                {base?.state === "downloading"
+                  ? `Downloading 2B base model… ${base.percent ?? 0}%`
+                  : "Extract / Lego / Complete need the 2B base model (4.5 GB)."}
+              </span>
+              {base?.state !== "downloading" && (
+                <button type="button" onClick={downloadBase}
+                  className={`text-xs rounded-lg border px-2 py-1 ${isDark ? "border-zinc-700 text-zinc-200 hover:bg-zinc-800" : "border-gray-300 text-gray-700 hover:bg-gray-100"} ${focusRing}`}>
+                  Download 2B base model
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {buffer.subMode !== "create" && (
           <div className={`rounded-lg border p-3 ${isDark ? "border-zinc-800 bg-zinc-900" : "border-gray-200 bg-gray-50"}`}>
@@ -194,6 +245,38 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
                     onChange={(e) => onChange({ repaintEnd: Number(e.target.value) })}
                     className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`}
                   />
+                </div>
+              </div>
+            )}
+            {(buffer.subMode === "extract" || buffer.subMode === "lego") && (
+              <div className="mt-3">
+                <label className={`block text-sm font-medium mb-1 ${label}`}>
+                  {buffer.subMode === "extract" ? "Track to extract" : "Track to generate"}
+                </label>
+                <select value={buffer.trackName} onChange={(e) => onChange({ trackName: e.target.value })}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`}>
+                  {TRACK_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+            )}
+            {buffer.subMode === "complete" && (
+              <div className="mt-3">
+                <label className={`block text-sm font-medium mb-1 ${label}`}>Add track classes (optional)</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {TRACK_OPTIONS.map((t) => {
+                    const on = buffer.trackClasses.includes(t.value);
+                    return (
+                      <button key={t.value} type="button"
+                        onClick={() => onChange({ trackClasses: on
+                          ? buffer.trackClasses.filter((v) => v !== t.value)
+                          : [...buffer.trackClasses, t.value] })}
+                        className={`px-2 py-1 text-xs rounded-md border ${on
+                          ? "bg-orange-600 text-white border-orange-600"
+                          : isDark ? "border-zinc-700 text-zinc-300 hover:bg-zinc-800" : "border-gray-300 text-gray-700 hover:bg-gray-100"} ${focusRing}`}>
+                        {t.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -271,7 +354,7 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
           <button
             type="button"
             onClick={onGenerate}
-            disabled={busy || !engineReady || !buffer.caption.trim() || !sourceReady}
+            disabled={busy || !engineReady || !buffer.caption.trim() || !sourceReady || !baseGateOk}
             className={`inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-500 disabled:opacity-50 ${focusRing}`}
           >
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Music className="w-4 h-4" />}
@@ -282,6 +365,9 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
           )}
           {engineReady && !sourceReady && (
             <span className={`text-xs ${sub}`}>Upload a source clip to {buffer.subMode}.</span>
+          )}
+          {engineReady && isBaseMode && (
+            <span className={`text-xs ${sub}`}>Base model uses ≥25 steps for quality.</span>
           )}
         </div>
 
