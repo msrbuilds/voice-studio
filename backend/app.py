@@ -45,6 +45,7 @@ from .core.version import get_version
 from .services.chatterbox_install import ChatterboxInstaller, EngineEnvInstaller
 from .services.model_download import ModelDownloader
 from .services.lm_download import LmDownloader
+from .services.base_model_download import BaseModelDownloader
 from .services.model_delete import ModelDeleter
 from .services.engine_uninstall import EngineEnvUninstaller
 from .services.join_cache import JoinCache
@@ -225,6 +226,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     }
     app.state.model_downloader = ModelDownloader()
     app.state.lm_downloader = LmDownloader(models_dir=settings.models_dir)
+    app.state.base_model_downloader = BaseModelDownloader(models_dir=settings.models_dir)
     app.state.model_deleter = ModelDeleter(em=engine_manager)
     app.state.engine_uninstallers = {
         "chatterbox": EngineEnvUninstaller("chatterbox", em=engine_manager),

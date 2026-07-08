@@ -156,3 +156,19 @@ def lm_status(request: Request) -> dict:
 @router.post("/api/music/lm/download")
 def lm_download(request: Request) -> dict:
     return request.app.state.lm_downloader.start()
+
+
+@router.get("/api/music/base/status")
+def base_status(request: Request) -> dict:
+    em = request.app.state.engine_manager
+    dl = request.app.state.base_model_downloader
+    try:
+        downloaded = em.get_engine("acestep").base_downloaded()
+    except Exception:  # noqa: BLE001
+        downloaded = False
+    return {"downloaded": downloaded, **dl.status()}
+
+
+@router.post("/api/music/base/download")
+def base_download(request: Request) -> dict:
+    return request.app.state.base_model_downloader.start()

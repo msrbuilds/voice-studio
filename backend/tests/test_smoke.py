@@ -585,6 +585,37 @@ def test_music_cover_missing_source(tmp_path):
     assert r.status_code == 400
 
 
+def test_base_downloader_lifecycle(tmp_path):
+    from backend.services.base_model_download import BaseModelDownloader
+    calls = {}
+
+    def fake_runner(repo_id, local_dir, progress):
+        calls["repo"] = repo_id
+        progress.set_total(100)
+        progress.add_bytes(100)
+        progress.log("done")
+    dl = BaseModelDownloader(models_dir=tmp_path, runner=fake_runner)
+    assert dl.status()["state"] == "idle"
+    dl.start()
+    import time as _t
+    for _ in range(50):
+        if dl.status()["state"] in ("done", "error"):
+            break
+        _t.sleep(0.02)
+    s = dl.status()
+    assert s["state"] == "done" and s["percent"] == 100.0
+    assert calls["repo"] == "ACE-Step/acestep-v15-base"
+    assert dl.target_dir() == tmp_path / "acestep" / "acestep-v15-base"
+
+
+def test_base_status_endpoint(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.get("/api/music/base/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert "downloaded" in body and "state" in body
+
+
 def test_music_request_body_new_fields():
     from backend.api.schemas import MusicRequestBody
     b = MusicRequestBody(caption="x", key="C major", time_signature="4",
