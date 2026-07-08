@@ -347,6 +347,30 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
+def test_inspire_music_clamps(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    svc = client.app.state.synth_service
+    em = client.app.state.engine_manager
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def lm_downloaded(self): return True
+        def inspire(self, query, instrumental, language):
+            return {"caption": "c", "lyrics": "[Instrumental]", "instrumental": False,
+                    "bpm": 999, "duration": 5000.0, "keyscale": "C minor",
+                    "timesignature": "4", "language": "en"}
+    em._engines["acestep"] = _StubAce()
+
+    bp = svc.inspire_music("a song", instrumental=True, language=None)
+    assert bp["bpm"] is None or bp["bpm"] <= 300
+    assert bp["duration_sec"] <= 240
+    assert bp["instrumental"] is True
+    assert bp["key"] == "C minor" and bp["time_signature"] == "4"
+
+
 def test_lm_downloader_targets_checkpoints(tmp_path):
     from backend.services.lm_download import LmDownloader
     calls = {}
