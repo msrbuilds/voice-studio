@@ -26,6 +26,12 @@ export interface MusicBuffer {
   durationSec: number;
   steps: number;
   seed: number;
+  bpm: number | null;
+  key: string;       // "auto" or e.g. "C major"
+  timeSig: string;   // "auto" or "4/4","3/4","2/4","6/8"
+  fadeIn: number;
+  fadeOut: number;
+  count: number;     // 1–4 variations
 }
 
 export interface Voice {

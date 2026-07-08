@@ -12,6 +12,12 @@ const EMPTY_MUSIC: MusicBuffer = {
   durationSec: 30,
   steps: 8,
   seed: -1,
+  bpm: null,
+  key: "auto",
+  timeSig: "auto",
+  fadeIn: 0,
+  fadeOut: 0,
+  count: 1,
 };
 
 function readMode(): ProjectMode | null {
