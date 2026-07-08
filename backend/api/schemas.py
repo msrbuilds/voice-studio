@@ -115,6 +115,7 @@ class EngineInfoModel(BaseModel):
     supports_voice_modes: bool = False
     supports_style_clone: bool = False
     supports_style_prompt: bool = False
+    supports_music: bool = False
 
 
 # Forward-ref: ConfigResponse references EngineInfoModel.
@@ -166,6 +167,20 @@ class SynthRequestBody(BaseModel):
     top_k: int | None = Field(default=None, ge=0, le=200)
     repetition_penalty: float | None = Field(default=None, ge=1.0, le=2.0)
     seed: int | None = Field(default=None, ge=0)
+
+
+# ---- music (ACE-Step) ----
+
+class MusicRequestBody(BaseModel):
+    caption: str = Field(..., min_length=1, max_length=512,
+                         description="Style/genre prompt for the music")
+    lyrics: str = Field("", max_length=4096, description="Lyrics; ignored if instrumental")
+    instrumental: bool = True
+    duration_sec: float = Field(default=30.0, ge=10.0, le=240.0)
+    steps: int = Field(default=8, ge=1, le=60)
+    seed: int = Field(default=-1)
+    bpm: int | None = Field(default=None, ge=30, le=300)
+    force_regenerate: bool = False
 
 
 class SynthBase64Response(BaseModel):

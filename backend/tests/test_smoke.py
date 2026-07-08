@@ -334,6 +334,85 @@ def test_system_stats(tmp_path):
     assert body["vram"] is None or body["vram"]["total_bytes"] > 0
 
 
+def test_engine_synth_request_has_music_fields():
+    from backend.core.engines import EngineSynthRequest
+    r = EngineSynthRequest(text="", voice_id="", caption="lofi", lyrics="[Instrumental]",
+                           instrumental=True, duration_sec=30.0, music_steps=8,
+                           music_seed=42, bpm=120)
+    assert r.caption == "lofi" and r.instrumental is True and r.duration_sec == 30.0
+
+
+def test_engine_supports_music_default_false():
+    from backend.core.engines.qwen_engine import QwenEngine
+    assert QwenEngine().supports_music() is False
+
+
+def test_acestep_build_generate_msg():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="dreamy synthwave",
+                             lyrics="", instrumental=True, duration_sec=20.0,
+                             music_steps=8, music_seed=7, bpm=110)
+    msg = eng._build_generate_msg(req, "C:/tmp/out.wav")
+    assert msg["op"] == "generate" and msg["caption"] == "dreamy synthwave"
+    assert msg["instrumental"] is True and msg["duration_sec"] == 20.0
+    assert msg["steps"] == 8 and msg["seed"] == 7 and msg["bpm"] == 110
+    assert msg["out_wav"] == "C:/tmp/out.wav"
+
+
+def test_acestep_capabilities():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    eng = AceStepEngine()
+    assert eng.supports_music() is True
+    assert eng.supports_voice_cloning() is False
+    assert eng.sample_rate() == 48000
+    assert eng.max_speakers() == 0
+    assert eng.name == "acestep"
+
+
+def test_acestep_registered_and_music_flag(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.get("/api/engines")
+    assert r.status_code == 200
+    engines = {e["name"]: e for e in r.json()["engines"]}
+    assert "acestep" in engines
+    assert engines["acestep"]["supports_music"] is True
+    # Speech engines report False.
+    assert engines["vibevoice"]["supports_music"] is False
+
+
+def test_music_generate_endpoint_stubbed(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    app = client.app
+    em = app.state.engine_manager
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def sample_rate(self): return 48000
+        def synthesize(self, req):
+            import numpy as np
+            from backend.core.engines import EngineResult, wrap_pcm_as_wav
+            wav = wrap_pcm_as_wav(np.zeros(48000, dtype=np.float32), 48000)
+            return EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)
+    em._engines["acestep"] = _StubAce()
+
+    r = client.post("/api/music/generate", json={"caption": "lofi chill", "duration_sec": 10})
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "audio/wav"
+    assert r.content[:4] == b"RIFF"
+    assert int(r.headers["X-Sample-Rate"]) == 48000
+
+
+def test_music_generate_requires_caption(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.post("/api/music/generate", json={"caption": ""})
+    assert r.status_code == 422
+
+
 if __name__ == "__main__":
     import tempfile
 

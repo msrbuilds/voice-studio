@@ -17,8 +17,16 @@ from typing import Callable, Deque, Optional, Tuple
 
 from backend.scripts.download_models import MODEL_CATALOG
 
-#: Engines whose weights this downloader can fetch (in-process engines).
-DOWNLOADABLE: frozenset[str] = frozenset({"vibevoice", "kokoro", "omnivoice", "voxcpm", "qwen"})
+#: Engines whose weights this downloader can fetch (in-process engines, plus
+#: ACE-Step whose weights live in the shared HF cache even though it runs in an
+#: isolated worker).
+DOWNLOADABLE: frozenset[str] = frozenset(
+    {"vibevoice", "kokoro", "omnivoice", "voxcpm", "qwen", "acestep"}
+)
+
+#: ACE-Step's main repo bundles a 3.5 GB LM the v1 default doesn't need; exclude
+#: it so the default fetch is the ~6 GB core (audio model + encoder + VAE).
+ACESTEP_IGNORE_PATTERNS: list[str] = ["acestep-5Hz-lm-1.7B/*"]
 
 _MAX_LOG_LINES = 500
 _SPEED_WINDOW = 30  # number of (ts, bytes) samples kept for speed/ETA
@@ -240,7 +248,11 @@ def _default_runner(repo_id: str, progress: Progress) -> None:
     poll_thread = threading.Thread(target=_poll, daemon=True, name="dl-poll")
     poll_thread.start()
     try:
-        snapshot_download(repo_id)
+        # ACE-Step's main repo bundles a 3.5 GB LM the v1 default skips.
+        if repo_id == "ACE-Step/Ace-Step1.5":
+            snapshot_download(repo_id, ignore_patterns=ACESTEP_IGNORE_PATTERNS)
+        else:
+            snapshot_download(repo_id)
         progress.log("Download complete.")
     finally:
         _stop.set()

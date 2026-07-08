@@ -22,6 +22,9 @@ venv-omnivoice/
 # uv's shared package cache (repo-local, on the venvs' volume so uv hardlinks
 # into each venv). Large runtime store — never tracked.
 .uv-cache/
+# Vendored engine source clones (ACE-Step) + their uv-sync'd .venv. Build
+# artifacts fetched by `studio.py install-acestep`, never tracked.
+backend/vendor/
 env/
 .env
 ENV/
