@@ -71,10 +71,24 @@ export interface MusicRequest {
   duration_sec: number;
   steps: number;
   seed: number;
+  bpm: number | null;
+  key: string;
+  time_signature: string;
+  fade_in: number;
+  fade_out: number;
+  count: number;
   force_regenerate?: boolean;
 }
 
-export async function generateMusic(body: MusicRequest): Promise<Blob> {
+export interface MusicClip {
+  cache_hash: string;
+  sample_rate: number;
+  duration_sec: number;
+  inference_ms: number;
+  seed: number;
+}
+
+export async function generateMusic(body: MusicRequest): Promise<MusicClip[]> {
   const res = await fetch(`${API_BASE}/music/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -90,7 +104,16 @@ export async function generateMusic(body: MusicRequest): Promise<Blob> {
     }
     throw new ApiError(detail, res.status);
   }
-  return res.blob();
+  const data = (await res.json()) as { clips: MusicClip[] };
+  return data.clips;
+}
+
+export function musicClipAudioUrl(hash: string): string {
+  return `${API_BASE}/cache/${hash}/audio`;
+}
+
+export function musicDownloadUrl(hash: string, format: "wav" | "flac"): string {
+  return `${API_BASE}/music/download/${hash}?format=${format}`;
 }
 
 export interface CacheEntryInfo {
