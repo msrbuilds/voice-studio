@@ -4,6 +4,7 @@ import { focusRing } from "@/lib/theme";
 
 import { ConfirmProvider } from "@/components/ConfirmProvider";
 import { MusicEditor } from "@/components/MusicEditor";
+import { MusicControls } from "@/components/MusicControls";
 import { InstallEngineDialog } from "@/components/InstallEngineDialog";
 import { DownloadModelDialog } from "@/components/DownloadModelDialog";
 import { DeleteWeightsDialog } from "@/components/DeleteWeightsDialog";
@@ -27,7 +28,7 @@ import {
   AudioPlayer,
   wavToPcm16,
 } from "@/lib/audio";
-import { loadSample, loadTtsSample, type Sample, type TtsSample } from "@/lib/samples";
+import { loadSample, loadTtsSample, loadMusicSample, type Sample, type TtsSample } from "@/lib/samples";
 import { useProject } from "@/lib/store";
 import type { CachedAudio, Project, Speaker, SynthSpeaker, VoiceMetadata } from "@/types/models";
 import { getDefaultCfgForEngine } from "@/lib/engineHints";
@@ -834,7 +835,15 @@ export default function App() {
   return (
     <ConfirmProvider isDark={isDark}>
     <div className={`flex h-screen overflow-hidden ${isDark ? "bg-zinc-950" : "bg-gray-50"}`}>
-      {pm.mode !== "music" && (
+      {pm.mode === "music" ? (
+        <MusicControls
+          theme={theme}
+          onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          config={config}
+          buffer={pm.music}
+          onChange={pm.setMusic}
+        />
+      ) : (
         <VoiceLibrary
           voices={displayedVoices}
           config={config}
@@ -866,6 +875,7 @@ export default function App() {
           onImportJson={handleImportJson}
           onLoadPodcastSample={handleLoadSample}
           onLoadTtsSample={handleLoadTtsSample}
+          onLoadMusicSample={(s) => pm.setMusic(loadMusicSample(s))}
         />
 
         {pm.mode === null ? (
