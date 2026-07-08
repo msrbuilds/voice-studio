@@ -33,14 +33,17 @@ export interface MusicBuffer {
   fadeOut: number;
   count: number;     // 1–4 variations
   thinking: boolean; // LM chain-of-thought enhancement
-  // --- audio-to-audio (Cover / Repaint) ---
-  subMode: "create" | "cover" | "repaint";
+  // --- audio-to-audio (Cover / Repaint / base tasks) ---
+  subMode: "create" | "cover" | "repaint" | "extract" | "lego" | "complete";
   srcAudioId: string | null;
   srcName: string;
   srcDurationSec: number;
   coverStrength: number; // 0.1–1.0
   repaintStart: number;  // seconds
   repaintEnd: number;    // seconds; -1 = to end
+  // --- 2B base model tasks (Extract / Lego / Complete) ---
+  trackName: string;      // extract/lego: one of TRACK_OPTIONS
+  trackClasses: string[]; // complete: zero or more track classes
 }
 
 export interface Voice {

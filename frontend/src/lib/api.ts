@@ -83,6 +83,8 @@ export interface MusicRequest {
   cover_strength: number;
   repaint_start: number;
   repaint_end: number;
+  track_name: string;
+  track_classes: string[];
   force_regenerate?: boolean;
 }
 
@@ -175,6 +177,14 @@ export async function getLmStatus(): Promise<LmStatus> {
 
 export async function startLmDownload(): Promise<LmStatus> {
   return jsonOrThrow<LmStatus>(await fetch(`${API_BASE}/music/lm/download`, { method: "POST" }));
+}
+
+export async function getBaseStatus(): Promise<LmStatus> {
+  return jsonOrThrow<LmStatus>(await fetch(`${API_BASE}/music/base/status`));
+}
+
+export async function startBaseDownload(): Promise<LmStatus> {
+  return jsonOrThrow<LmStatus>(await fetch(`${API_BASE}/music/base/download`, { method: "POST" }));
 }
 
 export function musicClipAudioUrl(hash: string): string {
