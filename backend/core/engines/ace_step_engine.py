@@ -127,6 +127,10 @@ class AceStepEngine(Engine):
             for d in ("acestep-v15-turbo", "vae", "Qwen3-Embedding-0.6B")
         )
 
+    def lm_downloaded(self) -> bool:
+        lm = _BACKEND_ROOT / "models" / "acestep" / "acestep-5Hz-lm-0.6B"
+        return (lm / "config.json").is_file()
+
     def engine_info(self) -> dict[str, Any]:
         device = self._resolved_device or self._device_request
         return {
@@ -208,6 +212,18 @@ class AceStepEngine(Engine):
     def synthesize(self, req: EngineSynthRequest) -> EngineResult:
         # Single-clip convenience (music path uses generate_batch).
         return self.generate_batch(req, 1)[0]
+
+    def inspire(self, query: str, instrumental: bool, language: str | None) -> dict:
+        """Run the LM 'Inspiration' flow (create_sample) → a blueprint dict."""
+        if not self.is_loaded():
+            self.load()
+        resp = self._exchange({
+            "op": "inspire", "query": query,
+            "instrumental": bool(instrumental), "language": (language or ""),
+        })
+        if not resp.get("ok"):
+            raise RuntimeError(f"ACE-Step inspire failed: {resp.get('error', 'unknown error')}")
+        return resp.get("blueprint", {})
 
     # -- internals (identical to QwenEngine)
     def _exchange(self, msg: dict, expect_reply: bool = True) -> dict:

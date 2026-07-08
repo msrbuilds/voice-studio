@@ -347,6 +347,17 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
+def test_acestep_lm_downloaded(tmp_path, monkeypatch):
+    import backend.core.engines.ace_step_engine as ace
+    monkeypatch.setattr(ace, "_BACKEND_ROOT", tmp_path)
+    eng = ace.AceStepEngine()
+    assert eng.lm_downloaded() is False
+    d = tmp_path / "models" / "acestep" / "acestep-5Hz-lm-0.6B"
+    d.mkdir(parents=True)
+    (d / "config.json").write_text("{}")
+    assert eng.lm_downloaded() is True
+
+
 def test_acestep_generate_msg_thinking():
     from backend.core.engines.ace_step_engine import AceStepEngine
     from backend.core.engines import EngineSynthRequest
