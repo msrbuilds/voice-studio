@@ -93,7 +93,10 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
         fade_in: buffer.fadeIn,
         fade_out: buffer.fadeOut,
         count: buffer.count,
-        thinking: buffer.thinking,
+        // LM (thinking) only applies to Create; only send it when the AI model
+        // is downloaded (otherwise the worker can't load it). Cover/Repaint and
+        // the base tasks never use it.
+        thinking: buffer.subMode === "create" && buffer.thinking && lmReady,
         task_type: buffer.subMode === "create" ? "text2music" : buffer.subMode,
         src_audio_id: buffer.srcAudioId ?? "",
         cover_strength: buffer.coverStrength,
@@ -287,23 +290,35 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
         <div className={`rounded-lg border p-3 ${isDark ? "border-zinc-800 bg-zinc-900" : "border-gray-200 bg-gray-50"}`}>
           <label className={`block text-sm font-medium mb-1 ${label}`}>Inspiration — describe your song</label>
           {lmReady ? (
-            <div className="flex gap-2">
-              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g. a soft Bengali love song for a rainy evening"
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`} />
-              <button type="button" disabled={inspiring || !query.trim()} onClick={onInspire}
-                className={`inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-3 py-2 text-sm font-medium text-white hover:bg-orange-500 disabled:opacity-50 ${focusRing}`}>
-                {inspiring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Inspire
-              </button>
-            </div>
+            <>
+              <div className="flex gap-2">
+                <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+                  placeholder="e.g. a soft Bengali love song for a rainy evening"
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`} />
+                <button type="button" disabled={inspiring || !query.trim()} onClick={onInspire}
+                  className={`inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-3 py-2 text-sm font-medium text-white hover:bg-orange-500 disabled:opacity-50 ${focusRing}`}>
+                  {inspiring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Inspire
+                </button>
+              </div>
+              <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <input type="checkbox" checked={buffer.thinking}
+                  onChange={(e) => onChange({ thinking: e.target.checked })}
+                  className="accent-orange-600" />
+                <span className={`text-xs ${sub}`}>
+                  Enhance with AI — coherent structure &amp; higher quality (slower)
+                </span>
+              </label>
+            </>
           ) : (
             <div className="flex items-center gap-2">
               <span className={`text-xs ${sub}`}>
-                {lm?.state === "downloading" ? `Downloading AI model… ${lm.percent ?? 0}%` : "Optional AI model (1.3 GB) enables Inspiration + Thinking."}
+                {lm?.state === "downloading"
+                  ? `Downloading AI model… ${lm.percent ?? 0}%`
+                  : "Download the AI model (1.3 GB) for coherent, higher-quality music. Without it, tracks may break up after a few seconds."}
               </span>
               {lm?.state !== "downloading" && (
                 <button type="button" onClick={downloadLm}
-                  className={`text-xs rounded-lg border px-2 py-1 ${isDark ? "border-zinc-700 text-zinc-200 hover:bg-zinc-800" : "border-gray-300 text-gray-700 hover:bg-gray-100"} ${focusRing}`}>
+                  className={`text-xs whitespace-nowrap rounded-lg border px-2 py-1 ${isDark ? "border-zinc-700 text-zinc-200 hover:bg-zinc-800" : "border-gray-300 text-gray-700 hover:bg-gray-100"} ${focusRing}`}>
                   Download AI model
                 </button>
               )}
