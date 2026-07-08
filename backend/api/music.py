@@ -73,12 +73,20 @@ def generate_music(
     request: Request,
     svc: SynthService = Depends(get_synth_service),
 ) -> MusicGenerateResponse:
+    BASE_TASKS = ("extract", "lego", "complete")
     src_path = ""
-    if body.task_type in ("cover", "repaint"):
+    if body.task_type in ("cover", "repaint") + BASE_TASKS:
         resolved = _music_src_path(request.app.state.settings.uploads_dir, body.src_audio_id)
         if resolved is None:
-            raise HTTPException(status_code=400, detail="source audio not found for cover/repaint")
+            raise HTTPException(status_code=400, detail="source audio required for this task")
         src_path = str(resolved)
+    if body.task_type in BASE_TASKS:
+        try:
+            base_ok = request.app.state.engine_manager.get_engine("acestep").base_downloaded()
+        except Exception:  # noqa: BLE001
+            base_ok = False
+        if not base_ok:
+            raise HTTPException(status_code=400, detail="2B base model not downloaded")
     try:
         results = svc.synthesize_music(MusicRequest(
             caption=body.caption, lyrics=body.lyrics, instrumental=body.instrumental,
@@ -89,6 +97,7 @@ def generate_music(
             task_type=body.task_type, src_audio=src_path, src_audio_id=body.src_audio_id,
             cover_strength=body.cover_strength,
             repaint_start=body.repaint_start, repaint_end=body.repaint_end,
+            track_name=body.track_name, track_classes=",".join(body.track_classes),
             force_regenerate=body.force_regenerate,
         ))
     except BackendError:
