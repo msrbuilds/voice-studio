@@ -19,6 +19,13 @@ const EMPTY_MUSIC: MusicBuffer = {
   fadeOut: 0,
   count: 1,
   thinking: false,
+  subMode: "create",
+  srcAudioId: null,
+  srcName: "",
+  srcDurationSec: 0,
+  coverStrength: 0.5,
+  repaintStart: 0,
+  repaintEnd: -1,
 };
 
 function readMode(): ProjectMode | null {
