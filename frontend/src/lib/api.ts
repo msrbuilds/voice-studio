@@ -77,6 +77,7 @@ export interface MusicRequest {
   fade_in: number;
   fade_out: number;
   count: number;
+  thinking: boolean;
   force_regenerate?: boolean;
 }
 
@@ -106,6 +107,42 @@ export async function generateMusic(body: MusicRequest): Promise<MusicClip[]> {
   }
   const data = (await res.json()) as { clips: MusicClip[] };
   return data.clips;
+}
+
+export interface MusicBlueprint {
+  caption: string;
+  lyrics: string;
+  instrumental: boolean;
+  bpm: number | null;
+  key: string;
+  time_signature: string;
+  duration_sec: number;
+}
+
+export interface LmStatus {
+  downloaded: boolean;
+  state: string;
+  percent: number | null;
+  downloaded_bytes: number;
+  total_bytes: number | null;
+  log: string[];
+  error: string | null;
+}
+
+export async function inspireMusic(query: string, instrumental: boolean, language?: string): Promise<MusicBlueprint> {
+  return jsonOrThrow<MusicBlueprint>(await fetch(`${API_BASE}/music/inspire`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, instrumental, language: language ?? "" }),
+  }));
+}
+
+export async function getLmStatus(): Promise<LmStatus> {
+  return jsonOrThrow<LmStatus>(await fetch(`${API_BASE}/music/lm/status`));
+}
+
+export async function startLmDownload(): Promise<LmStatus> {
+  return jsonOrThrow<LmStatus>(await fetch(`${API_BASE}/music/lm/download`, { method: "POST" }));
 }
 
 export function musicClipAudioUrl(hash: string): string {

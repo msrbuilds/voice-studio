@@ -18,6 +18,7 @@ const EMPTY_MUSIC: MusicBuffer = {
   fadeIn: 0,
   fadeOut: 0,
   count: 1,
+  thinking: false,
 };
 
 function readMode(): ProjectMode | null {
