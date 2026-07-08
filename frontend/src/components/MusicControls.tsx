@@ -1,6 +1,8 @@
-import { AudioWaveform, Binary, Cpu } from "lucide-react";
+import { useState } from "react";
+import { AudioWaveform, Binary, ChevronDown, ChevronUp, Cpu } from "lucide-react";
 import type { ConfigResponse, MusicBuffer } from "@/types/models";
 import { ThemeToggle } from "./ThemeToggle";
+import { KEY_OPTIONS, TIMESIG_OPTIONS } from "@/lib/musicOptions";
 import { focusRing } from "@/lib/theme";
 
 interface Props {
@@ -17,6 +19,15 @@ interface Props {
 // shared `pm.music` buffer, which MusicEditor reads at generate time.
 export function MusicControls({ theme, onThemeToggle, config, buffer, onChange }: Props) {
   const isDark = theme === "dark";
+  const [advOpen, setAdvOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem("vs.music.advanced") === "true"; } catch { return false; }
+  });
+  const toggleAdv = () =>
+    setAdvOpen((v) => {
+      const n = !v;
+      try { localStorage.setItem("vs.music.advanced", String(n)); } catch { /* ignore */ }
+      return n;
+    });
   const surface = isDark ? "bg-zinc-950" : "bg-white";
   const border = isDark ? "border-zinc-800" : "border-gray-200";
   const heading = isDark ? "text-zinc-400" : "text-gray-600";
@@ -62,6 +73,55 @@ export function MusicControls({ theme, onThemeToggle, config, buffer, onChange }
               className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`} />
             <p className={`text-xs mt-1 ${subtle}`}>-1 = random</p>
           </div>
+
+          <button type="button" onClick={toggleAdv}
+            className={`flex items-center gap-1 text-xs font-semibold uppercase tracking-wide ${heading} ${focusRing}`}>
+            {advOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />} Advanced
+          </button>
+          {advOpen && (
+            <div className="space-y-4">
+              <div>
+                <label className={`block text-sm font-medium mb-1 ${label}`}>Variations: {buffer.count}</label>
+                <input type="range" min={1} max={4} step={1} value={buffer.count}
+                  onChange={(e) => onChange({ count: Number(e.target.value) })}
+                  className="w-full accent-orange-600" />
+              </div>
+              <div>
+                <label className={`block text-sm font-medium mb-1 ${label}`}>BPM</label>
+                <input type="number" min={30} max={300} value={buffer.bpm ?? ""} placeholder="Auto"
+                  onChange={(e) => onChange({ bpm: e.target.value === "" ? null : Number(e.target.value) })}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`} />
+              </div>
+              <div>
+                <label className={`block text-sm font-medium mb-1 ${label}`}>Key</label>
+                <select value={buffer.key} onChange={(e) => onChange({ key: e.target.value })}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`}>
+                  {KEY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={`block text-sm font-medium mb-1 ${label}`}>Time signature</label>
+                <select value={buffer.timeSig} onChange={(e) => onChange({ timeSig: e.target.value })}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`}>
+                  {TIMESIG_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${label}`}>Fade in</label>
+                  <input type="number" min={0} max={30} step={0.5} value={buffer.fadeIn}
+                    onChange={(e) => onChange({ fadeIn: Number(e.target.value) })}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`} />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${label}`}>Fade out</label>
+                  <input type="number" min={0} max={30} step={0.5} value={buffer.fadeOut}
+                    onChange={(e) => onChange({ fadeOut: Number(e.target.value) })}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`} />
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         <section>
