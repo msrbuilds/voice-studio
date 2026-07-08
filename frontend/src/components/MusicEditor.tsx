@@ -98,37 +98,6 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className={`block text-sm font-medium mb-1 ${label}`}>Duration: {buffer.durationSec}s</label>
-            <input
-              type="range" min={10} max={240} step={5}
-              value={buffer.durationSec}
-              onChange={(e) => onChange({ durationSec: Number(e.target.value) })}
-              className="w-full accent-orange-600"
-            />
-          </div>
-          <div>
-            <label className={`block text-sm font-medium mb-1 ${label}`}>Steps: {buffer.steps}</label>
-            <input
-              type="range" min={1} max={60} step={1}
-              value={buffer.steps}
-              onChange={(e) => onChange({ steps: Number(e.target.value) })}
-              className="w-full accent-orange-600"
-            />
-          </div>
-          <div>
-            <label className={`block text-sm font-medium mb-1 ${label}`}>Seed</label>
-            <input
-              type="number"
-              value={buffer.seed}
-              onChange={(e) => onChange({ seed: Number(e.target.value) })}
-              className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`}
-            />
-            <p className={`text-xs mt-1 ${sub}`}>-1 = random</p>
-          </div>
-        </div>
-
         <div className="flex items-center gap-3">
           <button
             type="button"
