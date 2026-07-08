@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
-import { Loader2, Music, Download } from "lucide-react";
+import { Loader2, Music, Download, Sparkles } from "lucide-react";
 import { focusRing } from "@/lib/theme";
-import { generateMusic, musicClipAudioUrl, musicDownloadUrl, type MusicClip } from "@/lib/api";
-import { keyToParam, timeSigToNumerator } from "@/lib/musicOptions";
+import { generateMusic, inspireMusic, musicClipAudioUrl, musicDownloadUrl, type MusicClip } from "@/lib/api";
+import { keyToParam, timeSigToNumerator, normalizeKey, numeratorToTimeSig } from "@/lib/musicOptions";
+import { useLmStatus } from "@/hooks/useLmStatus";
 import type { MusicBuffer } from "@/types/models";
 
 interface Props {
@@ -22,6 +23,29 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [clips, setClips] = useState<MusicClip[]>([]);
   const timer = useRef<number | null>(null);
+
+  const { status: lm, download: downloadLm } = useLmStatus();
+  const lmReady = !!lm?.downloaded;
+  const [query, setQuery] = useState("");
+  const [inspiring, setInspiring] = useState(false);
+
+  const onInspire = async () => {
+    if (inspiring || !query.trim()) return;
+    setInspiring(true);
+    setError(null);
+    try {
+      const bp = await inspireMusic(query.trim(), buffer.instrumental);
+      onChange({
+        caption: bp.caption, lyrics: bp.lyrics, instrumental: bp.instrumental,
+        bpm: bp.bpm, key: normalizeKey(bp.key),
+        timeSig: numeratorToTimeSig(bp.time_signature), durationSec: bp.duration_sec,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Inspiration failed");
+    } finally {
+      setInspiring(false);
+    }
+  };
 
   const onGenerate = async () => {
     if (busy || !buffer.caption.trim()) return;
@@ -44,6 +68,7 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
         fade_in: buffer.fadeIn,
         fade_out: buffer.fadeOut,
         count: buffer.count,
+        thinking: buffer.thinking,
       });
       setClips(result);
     } catch (e) {
@@ -57,6 +82,33 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
   return (
     <div className="flex-1 overflow-y-auto px-6 py-4">
       <div className="max-w-3xl mx-auto space-y-4">
+        <div className={`rounded-lg border p-3 ${isDark ? "border-zinc-800 bg-zinc-900" : "border-gray-200 bg-gray-50"}`}>
+          <label className={`block text-sm font-medium mb-1 ${label}`}>Inspiration — describe your song</label>
+          {lmReady ? (
+            <div className="flex gap-2">
+              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+                placeholder="e.g. a soft Bengali love song for a rainy evening"
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`} />
+              <button type="button" disabled={inspiring || !query.trim()} onClick={onInspire}
+                className={`inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-3 py-2 text-sm font-medium text-white hover:bg-orange-500 disabled:opacity-50 ${focusRing}`}>
+                {inspiring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Inspire
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className={`text-xs ${sub}`}>
+                {lm?.state === "downloading" ? `Downloading AI model… ${lm.percent ?? 0}%` : "Optional AI model (1.3 GB) enables Inspiration + Thinking."}
+              </span>
+              {lm?.state !== "downloading" && (
+                <button type="button" onClick={downloadLm}
+                  className={`text-xs rounded-lg border px-2 py-1 ${isDark ? "border-zinc-700 text-zinc-200 hover:bg-zinc-800" : "border-gray-300 text-gray-700 hover:bg-gray-100"} ${focusRing}`}>
+                  Download AI model
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
         <div>
           <label className={`block text-sm font-medium mb-1 ${label}`}>Style / caption</label>
           <input

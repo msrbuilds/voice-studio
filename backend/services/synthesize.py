@@ -94,6 +94,7 @@ class MusicRequest:
     fade_in: float = 0.0
     fade_out: float = 0.0
     count: int = 1
+    thinking: bool = False
     force_regenerate: bool = False
 
 
@@ -540,7 +541,7 @@ class SynthService:
             caption=req.caption, lyrics=req.lyrics, instrumental=req.instrumental,
             duration_sec=req.duration_sec, music_steps=req.steps, music_seed=req.seed,
             bpm=req.bpm, keyscale=req.key, timesignature=req.time_signature,
-            fade_in=req.fade_in, fade_out=req.fade_out,
+            fade_in=req.fade_in, fade_out=req.fade_out, thinking=req.thinking,
         )
         count = max(1, min(4, int(req.count)))
 
@@ -574,6 +575,50 @@ class SynthService:
                 cache_hash=cache_hash, cache_hit=False, engine="acestep",
             ))
         return out
+
+    def inspire_music(self, query: str, instrumental: bool, language: str | None) -> dict:
+        """Run the LM 'Inspiration' flow (create_sample) → a sanity-clamped
+        blueprint dict. Reuses the shared lock. Requires the LM downloaded."""
+        from ..core.exceptions import BackendError
+
+        try:
+            engine = self._engines.get_engine("acestep")
+        except KeyError as exc:
+            raise BackendError("music engine (acestep) is not available",
+                               code="engine_unavailable") from exc
+        if not getattr(engine, "lm_downloaded", lambda: False)():
+            raise BackendError("the AI model (5Hz LM) is not downloaded",
+                               code="lm_unavailable")
+        if not engine.is_loaded():
+            engine.load()
+
+        with self._thread_lock:
+            future = self._executor.submit(engine.inspire, query, instrumental, language)
+            bp = future.result(timeout=self._timeout_s)
+
+        def _clamp_int(v, lo, hi):
+            try:
+                iv = int(v)
+            except (TypeError, ValueError):
+                return None
+            return iv if lo <= iv <= hi else None
+
+        lyrics = bp.get("lyrics") or ""
+        is_instr = bool(bp.get("instrumental")) or lyrics.strip() == "[Instrumental]"
+        dur = bp.get("duration")
+        try:
+            dur = max(10.0, min(240.0, float(dur))) if dur else 30.0
+        except (TypeError, ValueError):
+            dur = 30.0
+        return {
+            "caption": bp.get("caption") or "",
+            "lyrics": "" if is_instr else lyrics,
+            "instrumental": is_instr,
+            "bpm": _clamp_int(bp.get("bpm"), 30, 300),
+            "key": bp.get("keyscale") or "",
+            "time_signature": bp.get("timesignature") or "",
+            "duration_sec": dur,
+        }
 
 
 # ----------------------------------------------------------------- helpers --

@@ -102,6 +102,7 @@ class EngineSynthRequest:
     timesignature: str | None = None    # numerator "2"/"3"/"4"/"6"; None = auto
     fade_in: float | None = None
     fade_out: float | None = None
+    thinking: bool = False              # LM chain-of-thought planning
 
 
 class Engine(abc.ABC):

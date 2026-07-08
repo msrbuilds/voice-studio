@@ -4,14 +4,20 @@ from __future__ import annotations
 import io
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
 from ..core.exceptions import BackendError
 from ..services.synth_cache import SynthCache
 from ..services.synthesize import MusicRequest, SynthService
 from .deps import get_synth_cache, get_synth_service
-from .schemas import MusicClipModel, MusicGenerateResponse, MusicRequestBody
+from .schemas import (
+    MusicBlueprintResponse,
+    MusicClipModel,
+    MusicGenerateResponse,
+    MusicInspireBody,
+    MusicRequestBody,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["music"])
@@ -28,7 +34,7 @@ def generate_music(
             duration_sec=body.duration_sec, steps=body.steps, seed=body.seed, bpm=body.bpm,
             key=body.key, time_signature=body.time_signature,
             fade_in=body.fade_in, fade_out=body.fade_out, count=body.count,
-            force_regenerate=body.force_regenerate,
+            thinking=body.thinking, force_regenerate=body.force_regenerate,
         ))
     except BackendError:
         raise
@@ -67,3 +73,31 @@ def download_music(
         buf, media_type="audio/flac",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/api/music/inspire", response_model=MusicBlueprintResponse)
+def inspire_music(
+    body: MusicInspireBody,
+    svc: SynthService = Depends(get_synth_service),
+) -> MusicBlueprintResponse:
+    try:
+        bp = svc.inspire_music(body.query, body.instrumental, body.language or None)
+    except BackendError:
+        raise
+    return MusicBlueprintResponse(**bp)
+
+
+@router.get("/api/music/lm/status")
+def lm_status(request: Request) -> dict:
+    em = request.app.state.engine_manager
+    dl = request.app.state.lm_downloader
+    try:
+        downloaded = em.get_engine("acestep").lm_downloaded()
+    except Exception:  # noqa: BLE001
+        downloaded = False
+    return {"downloaded": downloaded, **dl.status()}
+
+
+@router.post("/api/music/lm/download")
+def lm_download(request: Request) -> dict:
+    return request.app.state.lm_downloader.start()

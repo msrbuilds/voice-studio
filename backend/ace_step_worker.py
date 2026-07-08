@@ -9,12 +9,18 @@ Protocol:
          {"op":"generate","out_dir":<path>,"batch_size":<int>,"caption":<str>,
           "lyrics":<str>,"instrumental":<bool>,"duration_sec":<float>,"steps":<int>,
           "seed":<int>,"bpm":<int|null>,"keyscale":<str>,"timesignature":<str>,
-          "fade_in":<float>,"fade_out":<float>}
+          "fade_in":<float>,"fade_out":<float>,"thinking":<bool>}
+         {"op":"inspire","query":<str>,"instrumental":<bool>,"language":<str>}
          {"op":"shutdown"}
   stdout {"ok":true,"device":"cuda"}                                   (load)
          {"ok":true,"clips":[{"file":"clip_0.wav","sample_rate":48000,
           "duration_sec":..,"seed":..}],"inference_ms":..}             (generate)
+         {"ok":true,"blueprint":{"caption":..,"lyrics":..,"instrumental":..,
+          "bpm":..,"duration":..,"keyscale":..,"timesignature":..,"language":..}} (inspire)
          {"ok":false,"error":".."}
+
+The 5Hz LM (0.6B) is lazy-loaded on first inspire / thinking generate via the
+PyTorch (pt) backend — no vLLM.
 
 The DiT runs WITHOUT the LM (llm_handler=None, thinking=False) for the v1
 default. Weights are located via ACESTEP_CHECKPOINTS_DIR (set by the proxy).
@@ -52,6 +58,7 @@ def _norm_device(device):
 class _Worker:
     def __init__(self) -> None:
         self._dit = None
+        self._llm = None
         self._project_root = os.environ.get("ACESTEP_PROJECT_ROOT") or os.getcwd()
 
     def handle(self, req: dict) -> dict:
@@ -60,9 +67,64 @@ class _Worker:
             return self._load(req)
         if op == "generate":
             return self._generate(req)
+        if op == "inspire":
+            return self._inspire(req)
         if op == "shutdown":
             return {"ok": True}
         return {"ok": False, "error": f"unknown op: {op!r}"}
+
+    def _ensure_lm(self):
+        if self._llm is not None:
+            return self._llm, True, None
+        try:
+            from acestep.llm_inference import LLMHandler
+        except Exception as exc:  # noqa: BLE001
+            return None, False, f"import LLMHandler failed: {exc}"
+        ckpt = os.environ.get("ACESTEP_CHECKPOINTS_DIR") or os.getcwd()
+        device = _norm_device(os.environ.get("ACESTEP_DEVICE") or "cuda")
+        try:
+            llm = LLMHandler()
+            msg, ok = llm.initialize(
+                checkpoint_dir=ckpt, lm_model_path="acestep-5Hz-lm-0.6B",
+                backend="pt", device=device,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return None, False, f"LM init failed: {exc}"
+        if not ok:
+            return None, False, f"LM init returned failure: {msg}"
+        self._llm = llm
+        _log("[acestep-worker] 5Hz LM loaded (pt backend)")
+        return llm, True, None
+
+    def _inspire(self, req: dict) -> dict:
+        query = (req.get("query") or "").strip()
+        if not query:
+            return {"ok": False, "error": "query must be non-empty"}
+        llm, ok, err = self._ensure_lm()
+        if not ok:
+            return {"ok": False, "error": err or "LM unavailable"}
+        try:
+            from acestep.inference import create_sample
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"import create_sample failed: {exc}"}
+        lang = (req.get("language") or "").strip() or None
+        try:
+            cs = create_sample(llm, query, instrumental=bool(req.get("instrumental")),
+                               vocal_language=lang)
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"create_sample failed: {exc}"}
+        if not getattr(cs, "success", False):
+            return {"ok": False, "error": getattr(cs, "error", None) or "inspiration failed"}
+        return {"ok": True, "blueprint": {
+            "caption": cs.caption or "",
+            "lyrics": cs.lyrics or "",
+            "instrumental": bool(cs.instrumental),
+            "bpm": (int(cs.bpm) if cs.bpm else None),
+            "duration": (float(cs.duration) if cs.duration else None),
+            "keyscale": cs.keyscale or "",
+            "timesignature": cs.timesignature or "",
+            "language": cs.language or "",
+        }}
 
     def _load(self, req: dict) -> dict:
         device = _norm_device(req.get("device"))
@@ -123,9 +185,18 @@ class _Worker:
         import shutil
         import tempfile
         work = tempfile.mkdtemp(prefix="acestep-gen-")
+        # Optional LM "thinking": load the LM lazily and pass the handler.
+        thinking = bool(req.get("thinking"))
+        llm_handler = None
+        if thinking:
+            llm_handler, ok, err = self._ensure_lm()
+            if not ok:
+                shutil.rmtree(work, ignore_errors=True)
+                return {"ok": False, "error": err or "LM unavailable"}
+        params.thinking = thinking
         t0 = time.perf_counter()
         try:
-            generate_music(self._dit, None, params, config, save_dir=work)
+            generate_music(self._dit, llm_handler, params, config, save_dir=work)
         except Exception as exc:  # noqa: BLE001
             shutil.rmtree(work, ignore_errors=True)
             return {"ok": False, "error": f"generate failed: {exc}"}

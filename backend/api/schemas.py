@@ -185,6 +185,7 @@ class MusicRequestBody(BaseModel):
     fade_in: float = Field(0.0, ge=0.0, le=30.0)
     fade_out: float = Field(0.0, ge=0.0, le=30.0)
     count: int = Field(1, ge=1, le=4, description="number of variations")
+    thinking: bool = False
     force_regenerate: bool = False
 
 
@@ -198,6 +199,22 @@ class MusicClipModel(BaseModel):
 
 class MusicGenerateResponse(BaseModel):
     clips: list[MusicClipModel]
+
+
+class MusicInspireBody(BaseModel):
+    query: str = Field(..., min_length=1, max_length=512)
+    instrumental: bool = False
+    language: str = ""
+
+
+class MusicBlueprintResponse(BaseModel):
+    caption: str
+    lyrics: str
+    instrumental: bool
+    bpm: int | None = None
+    key: str = ""
+    time_signature: str = ""
+    duration_sec: float = 30.0
 
 
 class SynthBase64Response(BaseModel):

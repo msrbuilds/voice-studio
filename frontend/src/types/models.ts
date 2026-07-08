@@ -32,6 +32,7 @@ export interface MusicBuffer {
   fadeIn: number;
   fadeOut: number;
   count: number;     // 1–4 variations
+  thinking: boolean; // LM chain-of-thought enhancement
 }
 
 export interface Voice {

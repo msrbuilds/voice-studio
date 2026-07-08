@@ -347,6 +347,100 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
+def test_music_inspire_and_lm_status(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    em = client.app.state.engine_manager
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def lm_downloaded(self): return True
+        def inspire(self, query, instrumental, language):
+            return {"caption": "epic", "lyrics": "la la", "instrumental": False,
+                    "bpm": 120, "duration": 30.0, "keyscale": "C minor",
+                    "timesignature": "4", "language": "en"}
+    em._engines["acestep"] = _StubAce()
+
+    r = client.post("/api/music/inspire", json={"query": "an epic song"})
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert b["caption"] == "epic" and b["bpm"] == 120 and b["key"] == "C minor"
+
+    s = client.get("/api/music/lm/status")
+    assert s.status_code == 200 and s.json()["downloaded"] is True
+
+
+def test_music_inspire_requires_query(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.post("/api/music/inspire", json={"query": ""})
+    assert r.status_code == 422
+
+
+def test_inspire_music_clamps(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    svc = client.app.state.synth_service
+    em = client.app.state.engine_manager
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def lm_downloaded(self): return True
+        def inspire(self, query, instrumental, language):
+            return {"caption": "c", "lyrics": "[Instrumental]", "instrumental": False,
+                    "bpm": 999, "duration": 5000.0, "keyscale": "C minor",
+                    "timesignature": "4", "language": "en"}
+    em._engines["acestep"] = _StubAce()
+
+    bp = svc.inspire_music("a song", instrumental=True, language=None)
+    assert bp["bpm"] is None or bp["bpm"] <= 300
+    assert bp["duration_sec"] <= 240
+    assert bp["instrumental"] is True
+    assert bp["key"] == "C minor" and bp["time_signature"] == "4"
+
+
+def test_lm_downloader_targets_checkpoints(tmp_path):
+    from backend.services.lm_download import LmDownloader
+    calls = {}
+    def fake_runner(repo_id, local_dir, progress):
+        calls["repo"] = repo_id
+        calls["dir"] = str(local_dir)
+        progress.log("done")
+    dl = LmDownloader(models_dir=tmp_path, runner=fake_runner)
+    assert dl.status()["state"] == "idle"
+    dl.start()
+    dl._thread.join(timeout=5)
+    assert calls["repo"] == "ACE-Step/acestep-5Hz-lm-0.6B"
+    assert calls["dir"].endswith("acestep-5Hz-lm-0.6B")
+    assert dl.status()["state"] == "done"
+
+
+def test_acestep_lm_downloaded(tmp_path, monkeypatch):
+    import backend.core.engines.ace_step_engine as ace
+    monkeypatch.setattr(ace, "_BACKEND_ROOT", tmp_path)
+    eng = ace.AceStepEngine()
+    assert eng.lm_downloaded() is False
+    d = tmp_path / "models" / "acestep" / "acestep-5Hz-lm-0.6B"
+    d.mkdir(parents=True)
+    (d / "config.json").write_text("{}")
+    assert eng.lm_downloaded() is True
+
+
+def test_acestep_generate_msg_thinking():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="jazz", thinking=True)
+    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
+    assert msg["thinking"] is True
+
+    from backend.api.schemas import MusicRequestBody
+    assert MusicRequestBody(caption="x", thinking=True).thinking is True
+
+
 def test_acestep_build_generate_msg_batch():
     from backend.core.engines.ace_step_engine import AceStepEngine
     from backend.core.engines import EngineSynthRequest
