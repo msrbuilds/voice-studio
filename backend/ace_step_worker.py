@@ -9,7 +9,9 @@ Protocol:
          {"op":"generate","out_dir":<path>,"batch_size":<int>,"caption":<str>,
           "lyrics":<str>,"instrumental":<bool>,"duration_sec":<float>,"steps":<int>,
           "seed":<int>,"bpm":<int|null>,"keyscale":<str>,"timesignature":<str>,
-          "fade_in":<float>,"fade_out":<float>,"thinking":<bool>}
+          "fade_in":<float>,"fade_out":<float>,"thinking":<bool>,
+          "task_type":<str>,"src_audio":<str>,"cover_strength":<float>,
+          "repaint_start":<float>,"repaint_end":<float>}
          {"op":"inspire","query":<str>,"instrumental":<bool>,"language":<str>}
          {"op":"shutdown"}
   stdout {"ok":true,"device":"cuda"}                                   (load)
@@ -165,8 +167,10 @@ class _Worker:
         lyrics = "[Instrumental]" if instrumental else (req.get("lyrics") or "[Instrumental]")
         batch_size = max(1, min(4, int(req.get("batch_size") or 1)))
         base_seed = int(req.get("seed") if req.get("seed") is not None else -1)
+        task_type = (req.get("task_type") or "text2music").strip() or "text2music"
+        src_audio = (req.get("src_audio") or "").strip() or None
         params = GenerationParams(
-            task_type="text2music",
+            task_type=task_type,
             caption=caption,
             lyrics=lyrics,
             instrumental=instrumental,
@@ -178,6 +182,10 @@ class _Worker:
             timesignature=(req.get("timesignature") or ""),
             fade_in_duration=float(req.get("fade_in") or 0.0),
             fade_out_duration=float(req.get("fade_out") or 0.0),
+            src_audio=src_audio,
+            audio_cover_strength=float(req.get("cover_strength") if req.get("cover_strength") is not None else 0.5),
+            repainting_start=float(req.get("repaint_start") or 0.0),
+            repainting_end=float(req.get("repaint_end") if req.get("repaint_end") is not None else -1.0),
             thinking=False,  # no LM
         )
         config = GenerationConfig(batch_size=batch_size, audio_format="wav")
