@@ -6,12 +6,14 @@ backend/core/engines/ace_step_engine.py.
 
 Protocol:
   stdin  {"op":"load","device":"cuda"}
-         {"op":"generate","out_wav":<path>,"caption":<str>,"lyrics":<str>,
-          "instrumental":<bool>,"duration_sec":<float>,"steps":<int>,
-          "seed":<int>,"bpm":<int|null>}
+         {"op":"generate","out_dir":<path>,"batch_size":<int>,"caption":<str>,
+          "lyrics":<str>,"instrumental":<bool>,"duration_sec":<float>,"steps":<int>,
+          "seed":<int>,"bpm":<int|null>,"keyscale":<str>,"timesignature":<str>,
+          "fade_in":<float>,"fade_out":<float>}
          {"op":"shutdown"}
   stdout {"ok":true,"device":"cuda"}                                   (load)
-         {"ok":true,"sample_rate":48000,"duration_sec":..,"inference_ms":..} (generate)
+         {"ok":true,"clips":[{"file":"clip_0.wav","sample_rate":48000,
+          "duration_sec":..,"seed":..}],"inference_ms":..}             (generate)
          {"ok":false,"error":".."}
 
 The DiT runs WITHOUT the LM (llm_handler=None, thinking=False) for the v1
@@ -87,9 +89,9 @@ class _Worker:
     def _generate(self, req: dict) -> dict:
         if self._dit is None:
             return {"ok": False, "error": "model not loaded"}
-        out_wav = req.get("out_wav")
-        if not out_wav:
-            return {"ok": False, "error": "out_wav required"}
+        out_dir = req.get("out_dir")
+        if not out_dir:
+            return {"ok": False, "error": "out_dir required"}
         caption = (req.get("caption") or "").strip()
         if not caption:
             return {"ok": False, "error": "caption must be non-empty"}
@@ -99,6 +101,8 @@ class _Worker:
             return {"ok": False, "error": f"import inference failed: {exc}"}
         instrumental = bool(req.get("instrumental"))
         lyrics = "[Instrumental]" if instrumental else (req.get("lyrics") or "[Instrumental]")
+        batch_size = max(1, min(4, int(req.get("batch_size") or 1)))
+        base_seed = int(req.get("seed") if req.get("seed") is not None else -1)
         params = GenerationParams(
             task_type="text2music",
             caption=caption,
@@ -106,35 +110,51 @@ class _Worker:
             instrumental=instrumental,
             duration=float(req.get("duration_sec") or 30.0),
             inference_steps=int(req.get("steps") or 8),
-            seed=int(req.get("seed") if req.get("seed") is not None else -1),
+            seed=base_seed,
             bpm=(int(req["bpm"]) if req.get("bpm") else None),
+            keyscale=(req.get("keyscale") or ""),
+            timesignature=(req.get("timesignature") or ""),
+            fade_in_duration=float(req.get("fade_in") or 0.0),
+            fade_out_duration=float(req.get("fade_out") or 0.0),
             thinking=False,  # no LM
         )
-        config = GenerationConfig(batch_size=1, audio_format="wav")
-        import tempfile
-        save_dir = tempfile.mkdtemp(prefix="acestep-")
-        t0 = time.perf_counter()
-        try:
-            generate_music(self._dit, None, params, config, save_dir=save_dir)
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "error": f"generate failed: {exc}"}
-        inference_ms = int((time.perf_counter() - t0) * 1000)
-        # Find the produced audio file and copy it to out_wav.
+        config = GenerationConfig(batch_size=batch_size, audio_format="wav")
         import glob
         import shutil
-        cands = sorted(glob.glob(os.path.join(save_dir, "**", "*.wav"), recursive=True))
-        if not cands:
+        import tempfile
+        work = tempfile.mkdtemp(prefix="acestep-gen-")
+        t0 = time.perf_counter()
+        try:
+            generate_music(self._dit, None, params, config, save_dir=work)
+        except Exception as exc:  # noqa: BLE001
+            shutil.rmtree(work, ignore_errors=True)
+            return {"ok": False, "error": f"generate failed: {exc}"}
+        inference_ms = int((time.perf_counter() - t0) * 1000)
+        wavs = sorted(glob.glob(os.path.join(work, "**", "*.wav"), recursive=True))
+        if not wavs:
+            shutil.rmtree(work, ignore_errors=True)
             return {"ok": False, "error": "no audio produced"}
-        shutil.copyfile(cands[0], out_wav)
+        os.makedirs(out_dir, exist_ok=True)
         try:
             import soundfile as sf
-            info = sf.info(out_wav)
-            sr = int(info.samplerate)
-            dur = float(info.frames) / float(info.samplerate)
         except Exception:  # noqa: BLE001
+            sf = None
+        clips = []
+        for i, w in enumerate(wavs[:batch_size]):
+            dest = os.path.join(out_dir, f"clip_{i}.wav")
+            shutil.copyfile(w, dest)
             sr, dur = 48000, float(req.get("duration_sec") or 0.0)
-        shutil.rmtree(save_dir, ignore_errors=True)
-        return {"ok": True, "sample_rate": sr, "duration_sec": dur, "inference_ms": inference_ms}
+            if sf is not None:
+                try:
+                    info = sf.info(dest)
+                    sr, dur = int(info.samplerate), float(info.frames) / float(info.samplerate)
+                except Exception:  # noqa: BLE001
+                    pass
+            # Per-clip seed: base_seed for clip 0 when fixed, else -1 (informational).
+            seed = base_seed if (base_seed >= 0 and i == 0) else -1
+            clips.append({"file": f"clip_{i}.wav", "sample_rate": sr, "duration_sec": dur, "seed": seed})
+        shutil.rmtree(work, ignore_errors=True)
+        return {"ok": True, "clips": clips, "inference_ms": inference_ms}
 
 
 def main() -> int:
