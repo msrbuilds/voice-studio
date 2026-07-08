@@ -347,6 +347,22 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
+def test_lm_downloader_targets_checkpoints(tmp_path):
+    from backend.services.lm_download import LmDownloader
+    calls = {}
+    def fake_runner(repo_id, local_dir, progress):
+        calls["repo"] = repo_id
+        calls["dir"] = str(local_dir)
+        progress.log("done")
+    dl = LmDownloader(models_dir=tmp_path, runner=fake_runner)
+    assert dl.status()["state"] == "idle"
+    dl.start()
+    dl._thread.join(timeout=5)
+    assert calls["repo"] == "ACE-Step/acestep-5Hz-lm-0.6B"
+    assert calls["dir"].endswith("acestep-5Hz-lm-0.6B")
+    assert dl.status()["state"] == "done"
+
+
 def test_acestep_lm_downloaded(tmp_path, monkeypatch):
     import backend.core.engines.ace_step_engine as ace
     monkeypatch.setattr(ace, "_BACKEND_ROOT", tmp_path)
