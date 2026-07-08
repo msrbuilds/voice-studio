@@ -429,6 +429,22 @@ def test_acestep_lm_downloaded(tmp_path, monkeypatch):
     assert eng.lm_downloaded() is True
 
 
+def test_acestep_generate_msg_cover():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="remix", task_type="cover",
+                             src_audio="C:/tmp/src.wav", cover_strength=0.3,
+                             repaint_start=2.0, repaint_end=7.0)
+    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
+    assert msg["task_type"] == "cover" and msg["src_audio"] == "C:/tmp/src.wav"
+    assert msg["cover_strength"] == 0.3 and msg["repaint_start"] == 2.0 and msg["repaint_end"] == 7.0
+
+    from backend.api.schemas import MusicRequestBody
+    b = MusicRequestBody(caption="x", task_type="repaint", src_audio_id="abc", repaint_start=1.0)
+    assert b.task_type == "repaint" and b.src_audio_id == "abc"
+
+
 def test_acestep_generate_msg_thinking():
     from backend.core.engines.ace_step_engine import AceStepEngine
     from backend.core.engines import EngineSynthRequest

@@ -95,6 +95,12 @@ class MusicRequest:
     fade_out: float = 0.0
     count: int = 1
     thinking: bool = False
+    task_type: str = "text2music"
+    src_audio: str = ""       # resolved path (set by the API layer)
+    src_audio_id: str = ""    # cache-key component
+    cover_strength: float = 0.5
+    repaint_start: float = 0.0
+    repaint_end: float = -1.0
     force_regenerate: bool = False
 
 
