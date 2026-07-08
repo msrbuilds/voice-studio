@@ -347,6 +347,18 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
+def test_acestep_generate_msg_thinking():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="jazz", thinking=True)
+    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
+    assert msg["thinking"] is True
+
+    from backend.api.schemas import MusicRequestBody
+    assert MusicRequestBody(caption="x", thinking=True).thinking is True
+
+
 def test_acestep_build_generate_msg_batch():
     from backend.core.engines.ace_step_engine import AceStepEngine
     from backend.core.engines import EngineSynthRequest

@@ -185,6 +185,7 @@ class MusicRequestBody(BaseModel):
     fade_in: float = Field(0.0, ge=0.0, le=30.0)
     fade_out: float = Field(0.0, ge=0.0, le=30.0)
     count: int = Field(1, ge=1, le=4, description="number of variations")
+    thinking: bool = False
     force_regenerate: bool = False
 
 

@@ -94,6 +94,7 @@ class MusicRequest:
     fade_in: float = 0.0
     fade_out: float = 0.0
     count: int = 1
+    thinking: bool = False
     force_regenerate: bool = False
 
 
@@ -540,7 +541,7 @@ class SynthService:
             caption=req.caption, lyrics=req.lyrics, instrumental=req.instrumental,
             duration_sec=req.duration_sec, music_steps=req.steps, music_seed=req.seed,
             bpm=req.bpm, keyscale=req.key, timesignature=req.time_signature,
-            fade_in=req.fade_in, fade_out=req.fade_out,
+            fade_in=req.fade_in, fade_out=req.fade_out, thinking=req.thinking,
         )
         count = max(1, min(4, int(req.count)))
 

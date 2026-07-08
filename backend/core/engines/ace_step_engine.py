@@ -175,6 +175,7 @@ class AceStepEngine(Engine):
             "timesignature": (req.timesignature or ""),
             "fade_in": float(req.fade_in or 0.0),
             "fade_out": float(req.fade_out or 0.0),
+            "thinking": bool(req.thinking),
         }
 
     def generate_batch(self, req: EngineSynthRequest, count: int) -> list[EngineResult]:
