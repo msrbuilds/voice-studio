@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import { Loader2, Music, Download, Sparkles } from "lucide-react";
+import { Loader2, Music, Download, Sparkles, Upload, X } from "lucide-react";
 import { focusRing } from "@/lib/theme";
-import { generateMusic, inspireMusic, musicClipAudioUrl, musicDownloadUrl, type MusicClip } from "@/lib/api";
+import { generateMusic, inspireMusic, musicClipAudioUrl, musicDownloadUrl, musicSourceUrl, uploadMusicSource, type MusicClip } from "@/lib/api";
 import { keyToParam, timeSigToNumerator, normalizeKey, numeratorToTimeSig } from "@/lib/musicOptions";
 import { useLmStatus } from "@/hooks/useLmStatus";
 import type { MusicBuffer } from "@/types/models";
@@ -28,6 +28,20 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
   const lmReady = !!lm?.downloaded;
   const [query, setQuery] = useState("");
   const [inspiring, setInspiring] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const onPickSource = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      const up = await uploadMusicSource(file);
+      onChange({ srcAudioId: up.id, srcName: up.name, srcDurationSec: up.duration_sec });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const onInspire = async () => {
     if (inspiring || !query.trim()) return;
@@ -47,8 +61,11 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
     }
   };
 
+  const needsSource = buffer.subMode !== "create";
+  const sourceReady = !needsSource || !!buffer.srcAudioId;
+
   const onGenerate = async () => {
-    if (busy || !buffer.caption.trim()) return;
+    if (busy || !buffer.caption.trim() || !sourceReady) return;
     setBusy(true);
     setError(null);
     setElapsed(0);
@@ -69,6 +86,11 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
         fade_out: buffer.fadeOut,
         count: buffer.count,
         thinking: buffer.thinking,
+        task_type: buffer.subMode === "create" ? "text2music" : buffer.subMode,
+        src_audio_id: buffer.srcAudioId ?? "",
+        cover_strength: buffer.coverStrength,
+        repaint_start: buffer.repaintStart,
+        repaint_end: buffer.repaintEnd,
       });
       setClips(result);
     } catch (e) {
@@ -82,6 +104,103 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
   return (
     <div className="flex-1 overflow-y-auto px-6 py-4">
       <div className="max-w-3xl mx-auto space-y-4">
+        <div className={`inline-flex gap-1 p-1 rounded-lg ${isDark ? "bg-zinc-800/40" : "bg-gray-100"}`}>
+          {(["create", "cover", "repaint"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onChange({ subMode: m })}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize ${
+                buffer.subMode === m
+                  ? "bg-orange-600 text-white"
+                  : isDark
+                    ? "text-zinc-400 hover:text-zinc-200"
+                    : "text-gray-600 hover:text-gray-800"
+              } ${focusRing}`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        {buffer.subMode !== "create" && (
+          <div className={`rounded-lg border p-3 ${isDark ? "border-zinc-800 bg-zinc-900" : "border-gray-200 bg-gray-50"}`}>
+            <label className={`block text-sm font-medium mb-1 ${label}`}>Source audio</label>
+            {buffer.srcAudioId ? (
+              <div className="flex items-center gap-3">
+                <audio controls src={musicSourceUrl(buffer.srcAudioId)} className="flex-1" />
+                <span className={`text-xs whitespace-nowrap ${sub}`}>{buffer.srcName} · {buffer.srcDurationSec.toFixed(1)}s</span>
+                <button
+                  type="button"
+                  onClick={() => onChange({ srcAudioId: null, srcName: "", srcDurationSec: 0 })}
+                  className={`p-1 rounded ${isDark ? "hover:bg-zinc-800 text-zinc-400" : "hover:bg-gray-100 text-gray-500"} ${focusRing}`}
+                  title="Clear"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <label className={`flex items-center justify-center gap-2 cursor-pointer text-sm rounded-lg border border-dashed px-3 py-4 ${isDark ? "border-zinc-700 text-zinc-300 hover:bg-zinc-800/40" : "border-gray-300 text-gray-700 hover:bg-gray-100"}`}>
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {uploading ? "Uploading…" : "Choose an audio file (WAV / FLAC / OGG)"}
+                <input
+                  type="file"
+                  accept="audio/*,.wav,.flac,.ogg"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void onPickSource(f);
+                  }}
+                />
+              </label>
+            )}
+            {buffer.subMode === "cover" && (
+              <div className="mt-3">
+                <label className={`block text-sm font-medium mb-1 ${label}`}>Strength: {buffer.coverStrength.toFixed(2)}</label>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  value={buffer.coverStrength}
+                  onChange={(e) => onChange({ coverStrength: Number(e.target.value) })}
+                  className="w-full accent-orange-600"
+                />
+                <p className={`text-xs mt-1 ${sub}`}>Lower = looser restyle · higher = closer to the source</p>
+              </div>
+            )}
+            {buffer.subMode === "repaint" && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${label}`}>Repaint from (s)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={buffer.srcDurationSec || undefined}
+                    step={0.5}
+                    value={buffer.repaintStart}
+                    onChange={(e) => onChange({ repaintStart: Number(e.target.value) })}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${label}`}>to (s, -1 = end)</label>
+                  <input
+                    type="number"
+                    min={-1}
+                    max={buffer.srcDurationSec || undefined}
+                    step={0.5}
+                    value={buffer.repaintEnd}
+                    onChange={(e) => onChange({ repaintEnd: Number(e.target.value) })}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {buffer.subMode === "create" && (
         <div className={`rounded-lg border p-3 ${isDark ? "border-zinc-800 bg-zinc-900" : "border-gray-200 bg-gray-50"}`}>
           <label className={`block text-sm font-medium mb-1 ${label}`}>Inspiration — describe your song</label>
           {lmReady ? (
@@ -108,6 +227,7 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
             </div>
           )}
         </div>
+        )}
 
         <div>
           <label className={`block text-sm font-medium mb-1 ${label}`}>Style / caption</label>
@@ -151,14 +271,17 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
           <button
             type="button"
             onClick={onGenerate}
-            disabled={busy || !engineReady || !buffer.caption.trim()}
+            disabled={busy || !engineReady || !buffer.caption.trim() || !sourceReady}
             className={`inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-500 disabled:opacity-50 ${focusRing}`}
           >
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Music className="w-4 h-4" />}
-            {busy ? `Generating… ${elapsed.toFixed(1)}s` : "Generate music"}
+            {busy ? `Generating… ${elapsed.toFixed(1)}s` : buffer.subMode === "create" ? "Generate music" : `Generate ${buffer.subMode}`}
           </button>
           {!engineReady && (
             <span className={`text-xs ${sub}`}>Select Music mode to set up the ACE-Step engine first.</span>
+          )}
+          {engineReady && !sourceReady && (
+            <span className={`text-xs ${sub}`}>Upload a source clip to {buffer.subMode}.</span>
           )}
         </div>
 
