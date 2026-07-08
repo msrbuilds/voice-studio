@@ -180,6 +180,11 @@ class MusicRequestBody(BaseModel):
     steps: int = Field(default=8, ge=1, le=60)
     seed: int = Field(default=-1)
     bpm: int | None = Field(default=None, ge=30, le=300)
+    key: str = Field("", max_length=32, description='e.g. "C major"; "" = auto')
+    time_signature: str = Field("", max_length=4, description='numerator "2"/"3"/"4"/"6"; "" = auto')
+    fade_in: float = Field(0.0, ge=0.0, le=30.0)
+    fade_out: float = Field(0.0, ge=0.0, le=30.0)
+    count: int = Field(1, ge=1, le=4, description="number of variations")
     force_regenerate: bool = False
 
 

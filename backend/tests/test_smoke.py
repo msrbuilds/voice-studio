@@ -413,6 +413,17 @@ def test_music_generate_requires_caption(tmp_path):
     assert r.status_code == 422
 
 
+def test_music_request_body_new_fields():
+    from backend.api.schemas import MusicRequestBody
+    b = MusicRequestBody(caption="x", key="C major", time_signature="4",
+                         fade_in=1.5, fade_out=2.0, count=3, bpm=120)
+    assert b.count == 3 and b.key == "C major" and b.fade_in == 1.5
+
+    import pytest
+    with pytest.raises(Exception):
+        MusicRequestBody(caption="x", count=9)  # >4 rejected
+
+
 if __name__ == "__main__":
     import tempfile
 

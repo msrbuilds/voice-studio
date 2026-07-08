@@ -98,6 +98,10 @@ class EngineSynthRequest:
     music_steps: int | None = None      # diffusion steps (turbo default 8)
     music_seed: int | None = None       # -1 / None = random
     bpm: int | None = None              # None = auto
+    keyscale: str | None = None         # e.g. "C major"; None/"" = auto
+    timesignature: str | None = None    # numerator "2"/"3"/"4"/"6"; None = auto
+    fade_in: float | None = None
+    fade_out: float | None = None
 
 
 class Engine(abc.ABC):

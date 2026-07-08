@@ -89,6 +89,11 @@ class MusicRequest:
     steps: int = 8
     seed: int = -1
     bpm: int | None = None
+    key: str = ""
+    time_signature: str = ""
+    fade_in: float = 0.0
+    fade_out: float = 0.0
+    count: int = 1
     force_regenerate: bool = False
 
 
