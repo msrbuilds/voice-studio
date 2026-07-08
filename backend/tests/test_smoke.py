@@ -361,6 +361,19 @@ def test_acestep_build_generate_msg():
     assert msg["out_wav"] == "C:/tmp/out.wav"
 
 
+def test_acestep_build_generate_msg_batch():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="jazz", duration_sec=15.0,
+                             music_steps=8, music_seed=5, bpm=90, keyscale="C major",
+                             timesignature="4", fade_in=1.0, fade_out=2.0)
+    msg = eng._build_generate_msg(req, "C:/tmp/out", 3)
+    assert msg["batch_size"] == 3 and msg["out_dir"] == "C:/tmp/out"
+    assert msg["keyscale"] == "C major" and msg["timesignature"] == "4"
+    assert msg["fade_in"] == 1.0 and msg["fade_out"] == 2.0
+
+
 def test_acestep_capabilities():
     from backend.core.engines.ace_step_engine import AceStepEngine
     eng = AceStepEngine()

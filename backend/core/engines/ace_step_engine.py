@@ -156,13 +156,14 @@ class AceStepEngine(Engine):
         return []
 
     # -- generation
-    def _build_generate_msg(self, req: EngineSynthRequest, out_wav: str) -> dict:
+    def _build_generate_msg(self, req: EngineSynthRequest, out_dir: str, batch_size: int) -> dict:
         caption = (req.caption or "").strip()
         if not caption:
             raise ValueError("caption must be non-empty for music generation")
         return {
             "op": "generate",
-            "out_wav": out_wav,
+            "out_dir": out_dir,
+            "batch_size": int(batch_size),
             "caption": caption,
             "lyrics": (req.lyrics or ""),
             "instrumental": bool(req.instrumental),
@@ -170,31 +171,42 @@ class AceStepEngine(Engine):
             "steps": int(req.music_steps or 8),
             "seed": int(req.music_seed if req.music_seed is not None else -1),
             "bpm": (int(req.bpm) if req.bpm else None),
+            "keyscale": (req.keyscale or ""),
+            "timesignature": (req.timesignature or ""),
+            "fade_in": float(req.fade_in or 0.0),
+            "fade_out": float(req.fade_out or 0.0),
         }
 
-    def synthesize(self, req: EngineSynthRequest) -> EngineResult:
+    def generate_batch(self, req: EngineSynthRequest, count: int) -> list[EngineResult]:
         if not self.is_loaded():
             raise RuntimeError("ACE-Step worker is not loaded")
-        fd, out_wav = tempfile.mkstemp(suffix=".wav", prefix="acestep-")
-        os.close(fd)
+        import shutil as _sh
+
+        out_dir = tempfile.mkdtemp(prefix="acestep-out-")
         try:
-            resp = self._exchange(self._build_generate_msg(req, out_wav))
+            resp = self._exchange(self._build_generate_msg(req, out_dir, count))
             if not resp.get("ok"):
                 raise RuntimeError(
                     f"ACE-Step generate failed: {resp.get('error', 'unknown error')}"
                 )
-            wav_bytes = Path(out_wav).read_bytes()
+            results: list[EngineResult] = []
+            for clip in resp.get("clips", []):
+                path = Path(out_dir) / clip["file"]
+                results.append(EngineResult(
+                    wav_bytes=path.read_bytes(),
+                    sample_rate=int(clip.get("sample_rate", self.sample_rate())),
+                    duration_sec=float(clip.get("duration_sec", 0.0)),
+                    inference_ms=int(resp.get("inference_ms", 0)),
+                ))
+            if not results:
+                raise RuntimeError("ACE-Step returned no clips")
+            return results
         finally:
-            try:
-                os.unlink(out_wav)
-            except OSError:
-                pass
-        return EngineResult(
-            wav_bytes=wav_bytes,
-            sample_rate=int(resp.get("sample_rate", self.sample_rate())),
-            duration_sec=float(resp.get("duration_sec", 0.0)),
-            inference_ms=int(resp.get("inference_ms", 0)),
-        )
+            _sh.rmtree(out_dir, ignore_errors=True)
+
+    def synthesize(self, req: EngineSynthRequest) -> EngineResult:
+        # Single-clip convenience (music path uses generate_batch).
+        return self.generate_batch(req, 1)[0]
 
     # -- internals (identical to QwenEngine)
     def _exchange(self, msg: dict, expect_reply: bool = True) -> dict:
