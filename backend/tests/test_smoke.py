@@ -429,6 +429,21 @@ def test_acestep_lm_downloaded(tmp_path, monkeypatch):
     assert eng.lm_downloaded() is True
 
 
+def test_acestep_generate_msg_extract():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="drums", task_type="extract",
+                             src_audio="C:/tmp/s.wav", track_name="drums", track_classes="")
+    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
+    assert msg["task_type"] == "extract" and msg["track_name"] == "drums"
+    assert msg["track_classes"] == ""
+
+    from backend.api.schemas import MusicRequestBody
+    b = MusicRequestBody(caption="x", task_type="complete", track_classes=["drums", "bass"])
+    assert b.task_type == "complete" and b.track_classes == ["drums", "bass"]
+
+
 def test_acestep_generate_msg_cover():
     from backend.core.engines.ace_step_engine import AceStepEngine
     from backend.core.engines import EngineSynthRequest

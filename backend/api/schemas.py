@@ -191,6 +191,8 @@ class MusicRequestBody(BaseModel):
     cover_strength: float = Field(0.5, ge=0.0, le=1.0)
     repaint_start: float = Field(0.0, ge=0.0)
     repaint_end: float = -1.0
+    track_name: str = ""
+    track_classes: list[str] = Field(default_factory=list)
     force_regenerate: bool = False
 
 

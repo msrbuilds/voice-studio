@@ -101,6 +101,8 @@ class MusicRequest:
     cover_strength: float = 0.5
     repaint_start: float = 0.0
     repaint_end: float = -1.0
+    track_name: str = ""
+    track_classes: str = ""   # comma-joined
     force_regenerate: bool = False
 
 
