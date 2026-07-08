@@ -201,6 +201,22 @@ class MusicGenerateResponse(BaseModel):
     clips: list[MusicClipModel]
 
 
+class MusicInspireBody(BaseModel):
+    query: str = Field(..., min_length=1, max_length=512)
+    instrumental: bool = False
+    language: str = ""
+
+
+class MusicBlueprintResponse(BaseModel):
+    caption: str
+    lyrics: str
+    instrumental: bool
+    bpm: int | None = None
+    key: str = ""
+    time_signature: str = ""
+    duration_sec: float = 30.0
+
+
 class SynthBase64Response(BaseModel):
     audio_b64: str
     sample_rate: int

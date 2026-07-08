@@ -347,6 +347,37 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
+def test_music_inspire_and_lm_status(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    em = client.app.state.engine_manager
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def lm_downloaded(self): return True
+        def inspire(self, query, instrumental, language):
+            return {"caption": "epic", "lyrics": "la la", "instrumental": False,
+                    "bpm": 120, "duration": 30.0, "keyscale": "C minor",
+                    "timesignature": "4", "language": "en"}
+    em._engines["acestep"] = _StubAce()
+
+    r = client.post("/api/music/inspire", json={"query": "an epic song"})
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert b["caption"] == "epic" and b["bpm"] == 120 and b["key"] == "C minor"
+
+    s = client.get("/api/music/lm/status")
+    assert s.status_code == 200 and s.json()["downloaded"] is True
+
+
+def test_music_inspire_requires_query(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.post("/api/music/inspire", json={"query": ""})
+    assert r.status_code == 422
+
+
 def test_inspire_music_clamps(tmp_path):
     client = _make_client(tmp_path / "v", tmp_path / "u")
     svc = client.app.state.synth_service
