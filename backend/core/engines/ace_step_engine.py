@@ -180,6 +180,11 @@ class AceStepEngine(Engine):
             "fade_in": float(req.fade_in or 0.0),
             "fade_out": float(req.fade_out or 0.0),
             "thinking": bool(req.thinking),
+            "task_type": (req.task_type or "text2music"),
+            "src_audio": (req.src_audio or ""),
+            "cover_strength": float(req.cover_strength if req.cover_strength is not None else 0.5),
+            "repaint_start": float(req.repaint_start or 0.0),
+            "repaint_end": float(req.repaint_end if req.repaint_end is not None else -1.0),
         }
 
     def generate_batch(self, req: EngineSynthRequest, count: int) -> list[EngineResult]:

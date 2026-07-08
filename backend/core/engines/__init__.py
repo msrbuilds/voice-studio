@@ -103,6 +103,11 @@ class EngineSynthRequest:
     fade_in: float | None = None
     fade_out: float | None = None
     thinking: bool = False              # LM chain-of-thought planning
+    task_type: str | None = None        # "text2music" (default) | "cover" | "repaint"
+    src_audio: str | None = None        # resolved path to a source clip (cover/repaint)
+    cover_strength: float | None = None  # 0.0–1.0; 0.2 = loose restyle
+    repaint_start: float | None = None   # seconds
+    repaint_end: float | None = None     # seconds; -1 = to end
 
 
 class Engine(abc.ABC):

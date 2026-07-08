@@ -429,6 +429,22 @@ def test_acestep_lm_downloaded(tmp_path, monkeypatch):
     assert eng.lm_downloaded() is True
 
 
+def test_acestep_generate_msg_cover():
+    from backend.core.engines.ace_step_engine import AceStepEngine
+    from backend.core.engines import EngineSynthRequest
+    eng = AceStepEngine()
+    req = EngineSynthRequest(text="", voice_id="", caption="remix", task_type="cover",
+                             src_audio="C:/tmp/src.wav", cover_strength=0.3,
+                             repaint_start=2.0, repaint_end=7.0)
+    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
+    assert msg["task_type"] == "cover" and msg["src_audio"] == "C:/tmp/src.wav"
+    assert msg["cover_strength"] == 0.3 and msg["repaint_start"] == 2.0 and msg["repaint_end"] == 7.0
+
+    from backend.api.schemas import MusicRequestBody
+    b = MusicRequestBody(caption="x", task_type="repaint", src_audio_id="abc", repaint_start=1.0)
+    assert b.task_type == "repaint" and b.src_audio_id == "abc"
+
+
 def test_acestep_generate_msg_thinking():
     from backend.core.engines.ace_step_engine import AceStepEngine
     from backend.core.engines import EngineSynthRequest
@@ -509,6 +525,49 @@ def test_music_generate_returns_clips(tmp_path):
     rf = client.get(f"/api/music/download/{h}?format=flac")
     assert rf.status_code == 200 and rf.headers["content-type"] == "audio/flac"
     assert rf.content[:4] == b"fLaC"
+
+
+def test_music_upload_and_cover(tmp_path):
+    import io
+    import numpy as np
+    import soundfile as sf
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    em = client.app.state.engine_manager
+
+    captured = {}
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def sample_rate(self): return 48000
+        def generate_batch(self, req, count):
+            captured["task_type"] = req.task_type
+            captured["src_audio"] = req.src_audio
+            from backend.core.engines import EngineResult, wrap_pcm_as_wav
+            wav = wrap_pcm_as_wav(np.zeros(48000, dtype=np.float32), 48000)
+            return [EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)]
+    em._engines["acestep"] = _StubAce()
+
+    buf = io.BytesIO()
+    sf.write(buf, np.zeros(48000, dtype=np.float32), 48000, format="WAV")
+    buf.seek(0)
+    up = client.post("/api/music/upload", files={"file": ("src.wav", buf.read(), "audio/wav")})
+    assert up.status_code == 201, up.text
+    sid = up.json()["id"]
+    assert up.json()["duration_sec"] > 0.9
+
+    r = client.post("/api/music/generate", json={"caption": "remix", "task_type": "cover",
+                                                 "src_audio_id": sid, "cover_strength": 0.3})
+    assert r.status_code == 200, r.text
+    assert captured["task_type"] == "cover" and captured["src_audio"].endswith(f"{sid}.wav")
+
+
+def test_music_cover_missing_source(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.post("/api/music/generate", json={"caption": "x", "task_type": "cover"})
+    assert r.status_code == 400
 
 
 def test_music_request_body_new_fields():

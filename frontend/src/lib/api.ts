@@ -78,7 +78,39 @@ export interface MusicRequest {
   fade_out: number;
   count: number;
   thinking: boolean;
+  task_type: string;
+  src_audio_id: string;
+  cover_strength: number;
+  repaint_start: number;
+  repaint_end: number;
   force_regenerate?: boolean;
+}
+
+export interface MusicUpload {
+  id: string;
+  name: string;
+  duration_sec: number;
+}
+
+export async function uploadMusicSource(file: File): Promise<MusicUpload> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/music/upload`, { method: "POST", body: form });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const b = (await res.json()) as { detail?: string };
+      if (typeof b.detail === "string") detail = b.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(detail, res.status);
+  }
+  return (await res.json()) as MusicUpload;
+}
+
+export function musicSourceUrl(id: string): string {
+  return `${API_BASE}/music/source/${id}`;
 }
 
 export interface MusicClip {

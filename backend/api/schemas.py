@@ -186,6 +186,11 @@ class MusicRequestBody(BaseModel):
     fade_out: float = Field(0.0, ge=0.0, le=30.0)
     count: int = Field(1, ge=1, le=4, description="number of variations")
     thinking: bool = False
+    task_type: str = "text2music"
+    src_audio_id: str = ""
+    cover_strength: float = Field(0.5, ge=0.0, le=1.0)
+    repaint_start: float = Field(0.0, ge=0.0)
+    repaint_end: float = -1.0
     force_regenerate: bool = False
 
 
@@ -215,6 +220,12 @@ class MusicBlueprintResponse(BaseModel):
     key: str = ""
     time_signature: str = ""
     duration_sec: float = 30.0
+
+
+class MusicUploadResponse(BaseModel):
+    id: str
+    name: str
+    duration_sec: float
 
 
 class SynthBase64Response(BaseModel):
