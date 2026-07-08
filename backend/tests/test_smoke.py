@@ -347,20 +347,6 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
-def test_acestep_build_generate_msg():
-    from backend.core.engines.ace_step_engine import AceStepEngine
-    from backend.core.engines import EngineSynthRequest
-    eng = AceStepEngine()
-    req = EngineSynthRequest(text="", voice_id="", caption="dreamy synthwave",
-                             lyrics="", instrumental=True, duration_sec=20.0,
-                             music_steps=8, music_seed=7, bpm=110)
-    msg = eng._build_generate_msg(req, "C:/tmp/out.wav")
-    assert msg["op"] == "generate" and msg["caption"] == "dreamy synthwave"
-    assert msg["instrumental"] is True and msg["duration_sec"] == 20.0
-    assert msg["steps"] == 8 and msg["seed"] == 7 and msg["bpm"] == 110
-    assert msg["out_wav"] == "C:/tmp/out.wav"
-
-
 def test_acestep_build_generate_msg_batch():
     from backend.core.engines.ace_step_engine import AceStepEngine
     from backend.core.engines import EngineSynthRequest
@@ -395,10 +381,15 @@ def test_acestep_registered_and_music_flag(tmp_path):
     assert engines["vibevoice"]["supports_music"] is False
 
 
-def test_music_generate_endpoint_stubbed(tmp_path):
+def test_music_generate_requires_caption(tmp_path):
     client = _make_client(tmp_path / "v", tmp_path / "u")
-    app = client.app
-    em = app.state.engine_manager
+    r = client.post("/api/music/generate", json={"caption": ""})
+    assert r.status_code == 422
+
+
+def test_music_generate_returns_clips(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    em = client.app.state.engine_manager
 
     class _StubAce:
         name = "acestep"
@@ -406,24 +397,24 @@ def test_music_generate_endpoint_stubbed(tmp_path):
         def load(self): pass
         def supports_music(self): return True
         def sample_rate(self): return 48000
-        def synthesize(self, req):
+        def generate_batch(self, req, count):
             import numpy as np
             from backend.core.engines import EngineResult, wrap_pcm_as_wav
             wav = wrap_pcm_as_wav(np.zeros(48000, dtype=np.float32), 48000)
-            return EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)
+            return [EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)
+                    for _ in range(count)]
     em._engines["acestep"] = _StubAce()
 
-    r = client.post("/api/music/generate", json={"caption": "lofi chill", "duration_sec": 10})
+    r = client.post("/api/music/generate", json={"caption": "lofi", "count": 2, "key": "C major"})
     assert r.status_code == 200, r.text
-    assert r.headers["content-type"] == "audio/wav"
-    assert r.content[:4] == b"RIFF"
-    assert int(r.headers["X-Sample-Rate"]) == 48000
-
-
-def test_music_generate_requires_caption(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    r = client.post("/api/music/generate", json={"caption": ""})
-    assert r.status_code == 422
+    body = r.json()
+    assert len(body["clips"]) == 2
+    h = body["clips"][0]["cache_hash"]
+    assert body["clips"][0]["sample_rate"] == 48000
+    assert client.get(f"/api/cache/{h}/audio").status_code == 200
+    rf = client.get(f"/api/music/download/{h}?format=flac")
+    assert rf.status_code == 200 and rf.headers["content-type"] == "audio/flac"
+    assert rf.content[:4] == b"fLaC"
 
 
 def test_music_request_body_new_fields():

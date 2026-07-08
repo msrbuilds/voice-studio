@@ -188,6 +188,18 @@ class MusicRequestBody(BaseModel):
     force_regenerate: bool = False
 
 
+class MusicClipModel(BaseModel):
+    cache_hash: str
+    sample_rate: int
+    duration_sec: float
+    inference_ms: int
+    seed: int = -1
+
+
+class MusicGenerateResponse(BaseModel):
+    clips: list[MusicClipModel]
+
+
 class SynthBase64Response(BaseModel):
     audio_b64: str
     sample_rate: int

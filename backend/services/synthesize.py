@@ -510,10 +510,12 @@ class SynthService:
         )
 
     # -- music (ACE-Step) --
-    def synthesize_music(self, req: MusicRequest) -> SynthResult:
-        """Generate music via the ACE-Step engine, reusing the same GPU lock +
-        executor + cache as TTS (so music and speech never run concurrently).
-        Bypasses speaker/voice resolution entirely."""
+    def synthesize_music(self, req: MusicRequest) -> list[SynthResult]:
+        """Generate 1–4 music clips via the ACE-Step engine, reusing the same GPU
+        lock + executor + cache as TTS (so music and speech never run
+        concurrently). Bypasses speaker/voice resolution entirely. Returns one
+        SynthResult per clip; each clip is cached (WAV) so it can be played and
+        downloaded via the cache/download routes."""
         import hashlib
         import json as _json
 
@@ -529,33 +531,49 @@ class SynthService:
                                code="engine_unavailable")
         if not engine.is_loaded():
             engine.load()
+        if not hasattr(engine, "generate_batch"):
+            raise BackendError("music engine does not support generation",
+                               code="engine_unavailable")
 
         engine_req = EngineSynthRequest(
             text="", voice_id="",
             caption=req.caption, lyrics=req.lyrics, instrumental=req.instrumental,
-            duration_sec=req.duration_sec, music_steps=req.steps,
-            music_seed=req.seed, bpm=req.bpm,
+            duration_sec=req.duration_sec, music_steps=req.steps, music_seed=req.seed,
+            bpm=req.bpm, keyscale=req.key, timesignature=req.time_signature,
+            fade_in=req.fade_in, fade_out=req.fade_out,
         )
-        key_src = _json.dumps({
+        count = max(1, min(4, int(req.count)))
+
+        with self._thread_lock:
+            future = self._executor.submit(engine.generate_batch, engine_req, count)
+            results = future.result(timeout=self._timeout_s * count)
+
+        base_key = _json.dumps({
             "engine": "acestep", "caption": req.caption, "lyrics": req.lyrics,
             "instrumental": req.instrumental, "duration": round(req.duration_sec, 2),
-            "steps": req.steps, "seed": req.seed, "bpm": req.bpm,
+            "steps": req.steps, "seed": req.seed, "bpm": req.bpm, "key": req.key,
+            "time_signature": req.time_signature, "fade_in": req.fade_in, "fade_out": req.fade_out,
         }, sort_keys=True)
-        cache_hash = "music-" + hashlib.sha256(key_src.encode()).hexdigest()[:24]
 
-        if not req.force_regenerate and self._cache is not None and self._cache.enabled:
-            hit = self._cache.get(cache_hash)
-            if hit is not None:
-                return SynthResult(
-                    wav_bytes=hit.wav_path.read_bytes(), sample_rate=hit.sample_rate,
-                    duration_sec=hit.duration_sec, inference_ms=hit.inference_ms,
-                    cache_hash=cache_hash, cache_hit=True, engine="acestep",
-                )
-
-        return self._synth_one(
-            engine, "acestep", engine_req, cache_hash,
-            cache_text=req.caption, cache_voice=None,
-        )
+        out: list[SynthResult] = []
+        for i, res in enumerate(results):
+            cache_hash = "music-" + hashlib.sha256(
+                f"{base_key}|{i}|{res.duration_sec}".encode()).hexdigest()[:24]
+            if self._cache is not None and self._cache.enabled:
+                try:
+                    self._cache.put(
+                        content_hash=cache_hash, wav_bytes=res.wav_bytes,
+                        sample_rate=res.sample_rate, duration_sec=res.duration_sec,
+                        inference_ms=res.inference_ms, text=req.caption, voice=None,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.debug("music cache put failed: %s", exc)
+            out.append(SynthResult(
+                wav_bytes=res.wav_bytes, sample_rate=res.sample_rate,
+                duration_sec=res.duration_sec, inference_ms=res.inference_ms,
+                cache_hash=cache_hash, cache_hit=False, engine="acestep",
+            ))
+        return out
 
 
 # ----------------------------------------------------------------- helpers --
