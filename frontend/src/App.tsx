@@ -5,6 +5,7 @@ import { focusRing } from "@/lib/theme";
 import { ConfirmProvider } from "@/components/ConfirmProvider";
 import { MusicEditor } from "@/components/MusicEditor";
 import { MusicControls } from "@/components/MusicControls";
+import { useLmStatus } from "@/hooks/useLmStatus";
 import { InstallEngineDialog } from "@/components/InstallEngineDialog";
 import { DownloadModelDialog } from "@/components/DownloadModelDialog";
 import { DeleteWeightsDialog } from "@/components/DeleteWeightsDialog";
@@ -152,6 +153,7 @@ export default function App() {
   }, [activeEngine, refreshConfig]);
 
   const pm = useProjectMode();
+  const { status: lmStatus } = useLmStatus();
 
   const [theme, setTheme] = useState<Theme>("dark");
   const [cfgScale, setCfgScale] = useState<number>(1.3);
@@ -842,6 +844,7 @@ export default function App() {
           config={config}
           buffer={pm.music}
           onChange={pm.setMusic}
+          lmReady={!!lmStatus?.downloaded}
         />
       ) : (
         <VoiceLibrary

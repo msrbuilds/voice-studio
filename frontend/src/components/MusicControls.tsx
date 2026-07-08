@@ -11,13 +11,14 @@ interface Props {
   config: ConfigResponse | null;
   buffer: MusicBuffer;
   onChange: (partial: Partial<MusicBuffer>) => void;
+  lmReady: boolean;
 }
 
 // Left-panel generation controls for Music mode. Mirrors VoiceLibrary's aside
 // chrome (surface / width / header / backend footer) but drops the collapse
 // toggle + version/update button (VoiceLibrary-specific). The sliders write the
 // shared `pm.music` buffer, which MusicEditor reads at generate time.
-export function MusicControls({ theme, onThemeToggle, config, buffer, onChange }: Props) {
+export function MusicControls({ theme, onThemeToggle, config, buffer, onChange, lmReady }: Props) {
   const isDark = theme === "dark";
   const [advOpen, setAdvOpen] = useState<boolean>(() => {
     try { return localStorage.getItem("vs.music.advanced") === "true"; } catch { return false; }
@@ -120,6 +121,16 @@ export function MusicControls({ theme, onThemeToggle, config, buffer, onChange }
                     className={`w-full rounded-lg border px-3 py-2 text-sm ${inputBg} ${focusRing}`} />
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+                <input id="music-thinking" type="checkbox" checked={buffer.thinking}
+                  disabled={!lmReady}
+                  onChange={(e) => onChange({ thinking: e.target.checked })}
+                  className="accent-orange-600 disabled:opacity-50" />
+                <label htmlFor="music-thinking" className={`text-sm ${label} ${lmReady ? "" : "opacity-50"}`}>
+                  Enhance with AI (thinking)
+                </label>
+              </div>
+              {!lmReady && <p className={`text-xs ${subtle}`}>Download the AI model (in the editor) to enable.</p>}
             </div>
           )}
         </section>
