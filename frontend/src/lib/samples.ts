@@ -282,6 +282,86 @@ export const TTS_SAMPLES: TtsSample[] = [
   },
 ];
 
+export interface MusicSample {
+  id: string;
+  name: string;
+  description: string;
+  caption: string;
+  lyrics: string;
+  instrumental: boolean;
+  durationSec: number;
+  steps: number;
+}
+
+export const MUSIC_SAMPLES: MusicSample[] = [
+  {
+    id: "music-documentary",
+    name: "Documentary underscore",
+    description: "Slow, dramatic cinematic bed for narration.",
+    caption: "slow, dramatic, cinematic strings and piano, emotional underscore",
+    lyrics: "",
+    instrumental: true,
+    durationSec: 30,
+    steps: 8,
+  },
+  {
+    id: "music-lofi",
+    name: "Lo-fi study beat",
+    description: "Chill lo-fi hip hop loop.",
+    caption: "lo-fi hip hop, mellow piano, soft drums, vinyl crackle, relaxed",
+    lyrics: "",
+    instrumental: true,
+    durationSec: 30,
+    steps: 8,
+  },
+  {
+    id: "music-trailer",
+    name: "Epic trailer",
+    description: "Big cinematic trailer hit.",
+    caption: "epic orchestral trailer, powerful percussion, brass, intense build",
+    lyrics: "",
+    instrumental: true,
+    durationSec: 20,
+    steps: 8,
+  },
+  {
+    id: "music-synthwave",
+    name: "Synthwave drive",
+    description: "Retro 80s synthwave.",
+    caption: "80s synthwave, retro synths, driving bassline, neon, nostalgic",
+    lyrics: "",
+    instrumental: true,
+    durationSec: 30,
+    steps: 8,
+  },
+  {
+    id: "music-folk-vocal",
+    name: "Acoustic folk (vocal)",
+    description: "Warm acoustic folk with a short vocal line.",
+    caption: "warm acoustic folk, fingerpicked guitar, gentle male vocals",
+    lyrics: "[Verse]\nMorning light on a winding road\nCarry me home, ease my load",
+    instrumental: false,
+    durationSec: 30,
+    steps: 8,
+  },
+];
+
+export function loadMusicSample(s: MusicSample): {
+  caption: string;
+  lyrics: string;
+  instrumental: boolean;
+  durationSec: number;
+  steps: number;
+} {
+  return {
+    caption: s.caption,
+    lyrics: s.lyrics,
+    instrumental: s.instrumental,
+    durationSec: s.durationSec,
+    steps: s.steps,
+  };
+}
+
 export function loadSample(sample: Sample): {
   segments: Segment[];
   speakers: Speaker[];
