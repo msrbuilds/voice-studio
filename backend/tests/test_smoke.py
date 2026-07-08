@@ -527,6 +527,49 @@ def test_music_generate_returns_clips(tmp_path):
     assert rf.content[:4] == b"fLaC"
 
 
+def test_music_upload_and_cover(tmp_path):
+    import io
+    import numpy as np
+    import soundfile as sf
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    em = client.app.state.engine_manager
+
+    captured = {}
+
+    class _StubAce:
+        name = "acestep"
+        def is_loaded(self): return True
+        def load(self): pass
+        def supports_music(self): return True
+        def sample_rate(self): return 48000
+        def generate_batch(self, req, count):
+            captured["task_type"] = req.task_type
+            captured["src_audio"] = req.src_audio
+            from backend.core.engines import EngineResult, wrap_pcm_as_wav
+            wav = wrap_pcm_as_wav(np.zeros(48000, dtype=np.float32), 48000)
+            return [EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)]
+    em._engines["acestep"] = _StubAce()
+
+    buf = io.BytesIO()
+    sf.write(buf, np.zeros(48000, dtype=np.float32), 48000, format="WAV")
+    buf.seek(0)
+    up = client.post("/api/music/upload", files={"file": ("src.wav", buf.read(), "audio/wav")})
+    assert up.status_code == 201, up.text
+    sid = up.json()["id"]
+    assert up.json()["duration_sec"] > 0.9
+
+    r = client.post("/api/music/generate", json={"caption": "remix", "task_type": "cover",
+                                                 "src_audio_id": sid, "cover_strength": 0.3})
+    assert r.status_code == 200, r.text
+    assert captured["task_type"] == "cover" and captured["src_audio"].endswith(f"{sid}.wav")
+
+
+def test_music_cover_missing_source(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.post("/api/music/generate", json={"caption": "x", "task_type": "cover"})
+    assert r.status_code == 400
+
+
 def test_music_request_body_new_fields():
     from backend.api.schemas import MusicRequestBody
     b = MusicRequestBody(caption="x", key="C major", time_signature="4",

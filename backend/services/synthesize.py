@@ -548,6 +548,9 @@ class SynthService:
             duration_sec=req.duration_sec, music_steps=req.steps, music_seed=req.seed,
             bpm=req.bpm, keyscale=req.key, timesignature=req.time_signature,
             fade_in=req.fade_in, fade_out=req.fade_out, thinking=req.thinking,
+            task_type=req.task_type, src_audio=(req.src_audio or None),
+            cover_strength=req.cover_strength,
+            repaint_start=req.repaint_start, repaint_end=req.repaint_end,
         )
         count = max(1, min(4, int(req.count)))
 
@@ -560,6 +563,9 @@ class SynthService:
             "instrumental": req.instrumental, "duration": round(req.duration_sec, 2),
             "steps": req.steps, "seed": req.seed, "bpm": req.bpm, "key": req.key,
             "time_signature": req.time_signature, "fade_in": req.fade_in, "fade_out": req.fade_out,
+            "task_type": req.task_type, "src_audio_id": req.src_audio_id,
+            "cover_strength": req.cover_strength,
+            "repaint_start": req.repaint_start, "repaint_end": req.repaint_end,
         }, sort_keys=True)
 
         out: list[SynthResult] = []

@@ -222,6 +222,12 @@ class MusicBlueprintResponse(BaseModel):
     duration_sec: float = 30.0
 
 
+class MusicUploadResponse(BaseModel):
+    id: str
+    name: str
+    duration_sec: float
+
+
 class SynthBase64Response(BaseModel):
     audio_b64: str
     sample_rate: int
