@@ -337,9 +337,10 @@ def test_system_stats(tmp_path):
 def test_engine_synth_request_has_music_fields():
     from backend.core.engines import EngineSynthRequest
     r = EngineSynthRequest(text="", voice_id="", caption="lofi", lyrics="[Instrumental]",
-                           instrumental=True, duration_sec=30.0, music_steps=8,
-                           music_seed=42, bpm=120)
-    assert r.caption == "lofi" and r.instrumental is True and r.duration_sec == 30.0
+                           instrumental=True, duration_sec=15.0, guidance_scale=3.0,
+                           temperature=1.0, music_seed=42, bpm=120)
+    assert r.caption == "lofi" and r.instrumental is True and r.duration_sec == 15.0
+    assert r.guidance_scale == 3.0 and r.temperature == 1.0
 
 
 def test_engine_supports_music_default_false():
@@ -431,3 +432,16 @@ if __name__ == "__main__":
                 sys.exit(1)
     _restore()
     print("OK")
+
+
+def test_music_request_body_guidance_and_temperature():
+    from backend.api.schemas import MusicRequestBody
+    b = MusicRequestBody(caption="x")
+    assert b.guidance_scale == 3.0 and b.temperature == 1.0 and b.duration_sec == 15.0
+    assert not hasattr(b, "steps")
+
+    import pytest
+    with pytest.raises(Exception):
+        MusicRequestBody(caption="x", duration_sec=60)     # >30 rejected
+    with pytest.raises(Exception):
+        MusicRequestBody(caption="x", guidance_scale=0.5)  # <1 rejected

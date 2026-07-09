@@ -176,8 +176,9 @@ class MusicRequestBody(BaseModel):
                          description="Style/genre prompt for the music")
     lyrics: str = Field("", max_length=4096, description="Lyrics; ignored if instrumental")
     instrumental: bool = True
-    duration_sec: float = Field(default=30.0, ge=10.0, le=240.0)
-    steps: int = Field(default=8, ge=1, le=60)
+    duration_sec: float = Field(default=15.0, ge=5.0, le=30.0)
+    guidance_scale: float = Field(default=3.0, ge=1.0, le=10.0)
+    temperature: float = Field(default=1.0, ge=0.1, le=2.0)
     seed: int = Field(default=-1)
     bpm: int | None = Field(default=None, ge=30, le=300)
     key: str = Field("", max_length=32, description='e.g. "C major"; "" = auto')
