@@ -61,6 +61,18 @@ def test_asr_dataclass_defaults():
     assert res.segments == []
 
 
+def test_languages_available_before_the_model_loads():
+    """Regression: the UI's language picker is populated from /api/asr/status,
+    which is hit long before the weights load lazily on first transcription."""
+    e = WhisperEngine()
+    assert e.is_loaded() is False
+    langs = e.languages()
+    assert len(langs) > 90
+    codes = {lang["code"] for lang in langs}
+    assert {"en", "ur", "hi", "zh"} <= codes
+    assert all(lang["label"] for lang in langs)
+
+
 def test_whisper_is_not_a_tts_engine():
     """Whisper must never surface in the TTS engine selector."""
     from backend.core.engines import Engine

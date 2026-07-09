@@ -140,19 +140,19 @@ class WhisperEngine(AsrEngine):
         return model_downloaded(self._model_id)
 
     def languages(self) -> list[dict[str, str]]:
-        """The model's own language table. Empty until the model is loaded."""
-        if self._model is None:
-            return []
+        """Whisper's language table.
+
+        Read from transformers' static LANGUAGES map rather than the loaded
+        model's `generation_config.lang_to_id`, so /api/asr/status can populate
+        the UI's language picker *before* the weights are ever loaded (the
+        model loads lazily on the first transcription).
+        """
         try:
             from transformers.models.whisper.tokenization_whisper import LANGUAGES
 
-            codes = sorted(
-                {_lang_from_token(t) for t in self._model.generation_config.lang_to_id}
-            )
             return [
-                {"code": c, "label": LANGUAGES.get(c, c).title()}
-                for c in codes
-                if c
+                {"code": code, "label": name.title()}
+                for code, name in sorted(LANGUAGES.items(), key=lambda kv: kv[1])
             ]
         except Exception:  # noqa: BLE001 — never let the status endpoint 500
             log.debug("could not enumerate whisper languages", exc_info=True)
