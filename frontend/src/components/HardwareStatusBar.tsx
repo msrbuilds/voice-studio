@@ -40,23 +40,44 @@ function textColor(pct: number, isDark: boolean): string {
 interface ChipProps {
   icon: React.ReactNode;
   label: string;
-  pct: number;
+  /** Omit for metrics with no capacity (Cache), which then render no bar. */
+  pct?: number;
   value: string;
   isDark: boolean;
 }
 
+// Chips share the bar's width equally: each is `flex-1` and its mini progress
+// bar is itself `flex-1`, so the leftover space is divided evenly between
+// chips rather than pooling as dead space on the right.
 function Chip({ icon, label, pct, value, isDark }: ChipProps) {
+  const hasBar = pct != null;
   return (
-    <div className="flex items-center gap-1.5 whitespace-nowrap">
-      <span className={isDark ? "text-zinc-500" : "text-zinc-400"}>{icon}</span>
-      <span className={`font-medium ${isDark ? "text-zinc-300" : "text-zinc-600"}`}>{label}</span>
-      <span className={`h-1.5 w-10 rounded-full overflow-hidden ${isDark ? "bg-zinc-800" : "bg-gray-200"}`}>
-        <span
-          className={`block h-full rounded-full ${barColor(pct, isDark)}`}
-          style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-        />
+    <div className="flex items-center gap-1.5 whitespace-nowrap flex-1 min-w-0">
+      <span className={`shrink-0 ${isDark ? "text-zinc-500" : "text-zinc-400"}`}>{icon}</span>
+      <span className={`shrink-0 font-medium ${isDark ? "text-zinc-300" : "text-zinc-600"}`}>
+        {label}
       </span>
-      <span className={`tabular-nums ${textColor(pct, isDark)}`}>{value}</span>
+      {hasBar && (
+        <span
+          className={`h-1.5 flex-1 min-w-[1.5rem] rounded-full overflow-hidden ${
+            isDark ? "bg-zinc-800" : "bg-gray-200"
+          }`}
+        >
+          <span
+            className={`block h-full rounded-full ${barColor(pct, isDark)}`}
+            style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+          />
+        </span>
+      )}
+      {/* Cache has no bar; a spacer keeps it the same width as its siblings. */}
+      {!hasBar && <span className="flex-1 min-w-[1.5rem]" />}
+      <span
+        className={`shrink-0 tabular-nums ${
+          hasBar ? textColor(pct, isDark) : isDark ? "text-zinc-400" : "text-zinc-500"
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -102,7 +123,7 @@ export function HardwareStatusBar({ isDark }: Props) {
   }
 
   return (
-    <div className={`flex items-center gap-x-4 gap-y-1 flex-wrap px-2.5 py-1.5 border-b text-[11px] ${surface}`}>
+    <div className={`flex items-center gap-x-4 px-2.5 py-1.5 border-b text-[11px] ${surface}`}>
       {stats ? (
         <>
           <Chip icon={<Cpu size={13} />} label="CPU" pct={stats.cpu_percent} value={`${stats.cpu_percent.toFixed(0)}%`} isDark={isDark} />
@@ -111,18 +132,14 @@ export function HardwareStatusBar({ isDark }: Props) {
             <Chip icon={<Zap size={13} />} label="VRAM" pct={stats.vram.percent} value={memValue(stats.vram)} isDark={isDark} />
           )}
           <Chip icon={<HardDrive size={13} />} label="Disk" pct={stats.disk.percent} value={memValue(stats.disk)} isDark={isDark} />
-          <div className="flex items-center gap-1.5 whitespace-nowrap">
-            <span className={isDark ? "text-zinc-500" : "text-zinc-400"}><Database size={13} /></span>
-            <span className={`font-medium ${isDark ? "text-zinc-300" : "text-zinc-600"}`}>Cache</span>
-            <span className={`tabular-nums ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>{fmtBytes(stats.cache_bytes)}</span>
-          </div>
+          <Chip icon={<Database size={13} />} label="Cache" value={fmtBytes(stats.cache_bytes)} isDark={isDark} />
         </>
       ) : (
-        <span className={isDark ? "text-zinc-500" : "text-zinc-500"}>Loading system stats {dash}</span>
+        <span className={`flex-1 ${isDark ? "text-zinc-500" : "text-zinc-500"}`}>Loading system stats {dash}</span>
       )}
       <button
         onClick={toggle}
-        className={`ml-auto p-0.5 rounded ${isDark ? "hover:bg-zinc-800 text-zinc-400" : "hover:bg-gray-100 text-zinc-500"}`}
+        className={`shrink-0 p-0.5 rounded ${isDark ? "hover:bg-zinc-800 text-zinc-400" : "hover:bg-gray-100 text-zinc-500"}`}
         aria-label="Hide system monitor"
         title="Hide system monitor"
       >
