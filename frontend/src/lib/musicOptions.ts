@@ -22,7 +22,7 @@ export const TIMESIG_OPTIONS: Opt[] = [
   { value: "6/8", label: "6/8" },
 ];
 
-// UI "4/4" → ACE-Step numerator "4"; "auto" → "".
+// UI "4/4" → numerator "4"; "auto" → "".
 export function timeSigToNumerator(v: string): string {
   if (!v || v === "auto") return "";
   return v.split("/")[0] ?? "";

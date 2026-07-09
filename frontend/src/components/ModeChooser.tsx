@@ -32,7 +32,7 @@ export function ModeChooser({ isDark, onPick }: Props) {
           className={`text-left p-6 rounded-xl border transition-colors ${card} ${focusRing}`}>
           <Music className="w-8 h-8 text-orange-400 mb-3" />
           <div className={`font-semibold ${title}`}>Music</div>
-          <p className={`text-sm mt-1 ${sub}`}>Generate music from a text prompt with ACE-Step.</p>
+          <p className={`text-sm mt-1 ${sub}`}>Generate music from a text prompt.</p>
         </button>
       </div>
     </div>
