@@ -21,7 +21,6 @@ import hashlib
 import logging
 import re
 import tempfile
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +30,7 @@ import numpy as np
 import soundfile as sf
 
 from ..core.engines import EngineSynthRequest, wrap_pcm_as_wav
+from ..core.gpu_gate import GpuGate
 from ..core.exceptions import (
     OutOfMemory,
     SynthesisTimeout,
@@ -141,6 +141,7 @@ class SynthService:
         synth_timeout_s: int,
         default_cfg_scale: float,
         cache: SynthCache | None = None,
+        gate: "GpuGate | None" = None,
     ) -> None:
         self._engines = engine_manager
         self._voices = voice_registry
@@ -148,10 +149,9 @@ class SynthService:
         self._timeout_s = synth_timeout_s
         self._default_cfg_scale = default_cfg_scale
         self._cache = cache
-        self._thread_lock = threading.Lock()
-        self._executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="tts-gen"
-        )
+        # Shared with AsrService so TTS and ASR never touch the GPU at once.
+        # Constructed here when absent, so standalone callers still work.
+        self._gate = gate or GpuGate(synth_timeout_s)
 
     # -- internal helpers
     def _resolve_request_context(self, req: SynthRequest):
@@ -440,10 +440,10 @@ class SynthService:
             language_id=effective_language_id,
         )
 
-        # Acquire the same lock the non-streaming path uses, so a
+        # Hold the same gate the non-streaming path uses, so a
         # stream_synthesize call can't run concurrently with a regular
-        # synthesize call on the same engine.
-        with self._thread_lock:
+        # synthesize call (or an ASR transcription) on the GPU.
+        with self._gate.exclusive():
             # The engine's stream_synthesize is a generator. We just
             # forward each yielded chunk to the caller.
             yield from target_engine.stream_synthesize(engine_req)
@@ -458,14 +458,12 @@ class SynthService:
         cache_text: str | None = None,
         cache_voice: str | None = None,
     ) -> SynthResult:
-        with self._thread_lock:
-            try:
-                future = self._executor.submit(engine.synthesize, engine_req)
-                result = future.result(timeout=self._timeout_s)
-            except concurrent.futures.TimeoutError as exc:
-                raise SynthesisTimeout(
-                    f"synthesis exceeded {self._timeout_s}s timeout"
-                ) from exc
+        try:
+            result = self._gate.run(engine.synthesize, engine_req)
+        except concurrent.futures.TimeoutError as exc:
+            raise SynthesisTimeout(
+                f"synthesis exceeded {self._timeout_s}s timeout"
+            ) from exc
 
         if cache_hash_for_write and self._cache is not None and self._cache.enabled:
             try:

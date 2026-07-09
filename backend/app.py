@@ -47,6 +47,7 @@ from .services.model_delete import ModelDeleter
 from .services.engine_uninstall import EngineEnvUninstaller
 from .services.join_cache import JoinCache
 from .services.synth_cache import SynthCache
+from .core.gpu_gate import GpuGate
 from .services.synthesize import SynthService
 from .services.update_check import UpdateChecker
 from .services.update_run import UpdateRunner
@@ -192,6 +193,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if voices:
             voice_registry.register_engine_voices(engine.name, voices)
 
+    # One gate for every GPU consumer: TTS synthesis and ASR transcription
+    # serialize onto a single worker thread so they never contend for VRAM.
+    gpu_gate = GpuGate(settings.synth_timeout_s)
+
     synth_service = SynthService(
         engine_manager=engine_manager,
         voice_registry=voice_registry,
@@ -199,6 +204,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         synth_timeout_s=settings.synth_timeout_s,
         default_cfg_scale=settings.default_cfg_scale,
         cache=synth_cache,
+        gate=gpu_gate,
     )
 
     # Keep the ModelManager around for direct introspection (the
@@ -214,6 +220,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.synth_cache = synth_cache
     app.state.join_cache = join_cache
     app.state.synth_service = synth_service
+    app.state.gpu_gate = gpu_gate
     app.state.engine_installers = {
         "chatterbox": ChatterboxInstaller(),
         "omnivoice": EngineEnvInstaller("install-omnivoice"),
