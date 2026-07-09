@@ -80,25 +80,6 @@ class SynthRequest:
 
 
 @dataclass
-class MusicRequest:
-    """A text-to-music request. No speakers/voices."""
-    caption: str
-    lyrics: str = ""
-    instrumental: bool = True
-    duration_sec: float = 15.0
-    guidance_scale: float = 3.0
-    temperature: float = 1.0
-    seed: int = -1
-    bpm: int | None = None
-    key: str = ""
-    time_signature: str = ""
-    fade_in: float = 0.0
-    fade_out: float = 0.0
-    count: int = 1
-    force_regenerate: bool = False
-
-
-@dataclass
 class SynthResult:
     wav_bytes: bytes
     sample_rate: int
@@ -509,74 +490,6 @@ class SynthService:
             cache_hit=False,
             engine=engine_name,
         )
-
-    # -- music --
-    def synthesize_music(self, req: MusicRequest) -> list[SynthResult]:
-        """Generate 1–4 music clips via the registered music engine, reusing the same GPU
-        lock + executor + cache as TTS (so music and speech never run
-        concurrently). Bypasses speaker/voice resolution entirely. Returns one
-        SynthResult per clip; each clip is cached (WAV) so it can be played and
-        downloaded via the cache/download routes."""
-        import hashlib
-        import json as _json
-
-        from ..core.exceptions import BackendError
-
-        # Resolve the music engine by capability, not by name: any registered
-        # engine whose supports_music() is True can serve this request.
-        engine = next(
-            (e for e in self._engines.list_engines() if e.supports_music()), None
-        )
-        if engine is None:
-            raise BackendError("no music engine is installed",
-                               code="engine_unavailable", http_status=503)
-        if not hasattr(engine, "generate_batch"):
-            raise BackendError("music engine does not support generation",
-                               code="engine_unavailable", http_status=503)
-        if not engine.is_loaded():
-            engine.load()
-
-        engine_req = EngineSynthRequest(
-            text="", voice_id="",
-            caption=req.caption, lyrics=req.lyrics, instrumental=req.instrumental,
-            duration_sec=req.duration_sec, music_seed=req.seed,
-            guidance_scale=req.guidance_scale, temperature=req.temperature,
-            bpm=req.bpm, keyscale=req.key, timesignature=req.time_signature,
-            fade_in=req.fade_in, fade_out=req.fade_out,
-        )
-        count = max(1, min(4, int(req.count)))
-
-        with self._thread_lock:
-            future = self._executor.submit(engine.generate_batch, engine_req, count)
-            results = future.result(timeout=self._timeout_s * count)
-
-        base_key = _json.dumps({
-            "engine": engine.name, "caption": req.caption, "lyrics": req.lyrics,
-            "instrumental": req.instrumental, "duration": round(req.duration_sec, 2),
-            "guidance_scale": req.guidance_scale, "temperature": req.temperature,
-            "seed": req.seed, "bpm": req.bpm, "key": req.key,
-            "time_signature": req.time_signature, "fade_in": req.fade_in, "fade_out": req.fade_out,
-        }, sort_keys=True)
-
-        out: list[SynthResult] = []
-        for i, res in enumerate(results):
-            cache_hash = "music-" + hashlib.sha256(
-                f"{base_key}|{i}|{res.duration_sec}".encode()).hexdigest()[:24]
-            if self._cache is not None and self._cache.enabled:
-                try:
-                    self._cache.put(
-                        content_hash=cache_hash, wav_bytes=res.wav_bytes,
-                        sample_rate=res.sample_rate, duration_sec=res.duration_sec,
-                        inference_ms=res.inference_ms, text=req.caption, voice=None,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    log.debug("music cache put failed: %s", exc)
-            out.append(SynthResult(
-                wav_bytes=res.wav_bytes, sample_rate=res.sample_rate,
-                duration_sec=res.duration_sec, inference_ms=res.inference_ms,
-                cache_hash=cache_hash, cache_hit=False, engine=engine.name,
-            ))
-        return out
 
 
 # ----------------------------------------------------------------- helpers --

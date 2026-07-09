@@ -115,7 +115,6 @@ class EngineInfoModel(BaseModel):
     supports_voice_modes: bool = False
     supports_style_clone: bool = False
     supports_style_prompt: bool = False
-    supports_music: bool = False
 
 
 # Forward-ref: ConfigResponse references EngineInfoModel.
@@ -167,38 +166,6 @@ class SynthRequestBody(BaseModel):
     top_k: int | None = Field(default=None, ge=0, le=200)
     repetition_penalty: float | None = Field(default=None, ge=1.0, le=2.0)
     seed: int | None = Field(default=None, ge=0)
-
-
-# ---- music ----
-
-class MusicRequestBody(BaseModel):
-    caption: str = Field(..., min_length=1, max_length=512,
-                         description="Style/genre prompt for the music")
-    lyrics: str = Field("", max_length=4096, description="Lyrics; ignored if instrumental")
-    instrumental: bool = True
-    duration_sec: float = Field(default=15.0, ge=5.0, le=30.0)
-    guidance_scale: float = Field(default=3.0, ge=1.0, le=10.0)
-    temperature: float = Field(default=1.0, ge=0.1, le=2.0)
-    seed: int = Field(default=-1)
-    bpm: int | None = Field(default=None, ge=30, le=300)
-    key: str = Field("", max_length=32, description='e.g. "C major"; "" = auto')
-    time_signature: str = Field("", max_length=4, description='numerator "2"/"3"/"4"/"6"; "" = auto')
-    fade_in: float = Field(0.0, ge=0.0, le=30.0)
-    fade_out: float = Field(0.0, ge=0.0, le=30.0)
-    count: int = Field(1, ge=1, le=4, description="number of variations")
-    force_regenerate: bool = False
-
-
-class MusicClipModel(BaseModel):
-    cache_hash: str
-    sample_rate: int
-    duration_sec: float
-    inference_ms: int
-    seed: int = -1
-
-
-class MusicGenerateResponse(BaseModel):
-    clips: list[MusicClipModel]
 
 
 class SynthBase64Response(BaseModel):

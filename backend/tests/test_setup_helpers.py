@@ -164,7 +164,7 @@ def test_parse_model_selection_rejects_unknown():
 
 
 def test_catalog_has_expected_engines():
-    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen", "musicgen"}
+    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen"}
     assert dm.MODEL_CATALOG["kokoro"]["repo_id"] == "hexgrad/Kokoro-82M"
     assert dm.MODEL_CATALOG["omnivoice"]["repo_id"] == "k2-fsa/OmniVoice"
 
@@ -374,15 +374,7 @@ def test_worktree_is_clean():
 
 
 
-def test_musicgen_catalog_and_ignore_patterns():
-    from backend.scripts import download_models as dm
-    from backend.services.model_download import DOWNLOADABLE, IGNORE_PATTERNS
-    assert dm.MODEL_CATALOG["musicgen"]["repo_id"] == "facebook/musicgen-small"
-    assert "musicgen" in DOWNLOADABLE
-    assert IGNORE_PATTERNS["musicgen"] == ["*.bin"]
-
-
-def test_repo_total_bytes_skips_ignored(monkeypatch):
+def test_repo_total_bytes_sums_siblings(monkeypatch):
     import backend.services.model_download as md
 
     class _Sib:
@@ -392,15 +384,16 @@ def test_repo_total_bytes_skips_ignored(monkeypatch):
     class _Api:
         def model_info(self, *a, **kw):
             return type("I", (), {"siblings": [_Sib("model.safetensors", 100),
-                                               _Sib("pytorch_model.bin", 900)]})()
+                                               _Sib("config.json", 900)]})()
 
     import huggingface_hub
     monkeypatch.setattr(huggingface_hub, "HfApi", lambda: _Api())
-    assert md._repo_total_bytes("x", ["*.bin"]) == 100
     assert md._repo_total_bytes("x") == 1000
 
 
-def test_ignore_for_repo_resolves_musicgen():
-    from backend.services.model_download import _ignore_for_repo
-    assert _ignore_for_repo("facebook/musicgen-small") == ["*.bin"]
-    assert _ignore_for_repo("hexgrad/Kokoro-82M") is None
+def test_no_music_engine_registered():
+    """MusicGen was removed; nothing should reintroduce a music engine."""
+    from backend.scripts import download_models as dm
+    from backend.services.model_download import DOWNLOADABLE
+    assert "musicgen" not in dm.MODEL_CATALOG
+    assert "musicgen" not in DOWNLOADABLE

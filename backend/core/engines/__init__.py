@@ -90,18 +90,6 @@ class EngineSynthRequest:
     top_k: int | None = None
     repetition_penalty: float | None = None
     seed: int | None = None
-    # --- Music generation only (speech engines ignore) ---
-    caption: str | None = None          # style/genre prompt
-    lyrics: str | None = None           # lyrics, or "[Instrumental]"
-    instrumental: bool = False          # force instrumental regardless of lyrics
-    duration_sec: float | None = None   # target length
-    music_seed: int | None = None       # -1 / None = random
-    guidance_scale: float | None = None  # classifier-free guidance (MusicGen: 3.0)
-    bpm: int | None = None              # None = auto
-    keyscale: str | None = None         # e.g. "C major"; None/"" = auto
-    timesignature: str | None = None    # numerator "2"/"3"/"4"/"6"; None = auto
-    fade_in: float | None = None
-    fade_out: float | None = None
 
 
 class Engine(abc.ABC):
@@ -184,12 +172,6 @@ class Engine(abc.ABC):
         any Clone/Design/Auto toggle. The value rides the `instruct` field."""
         return False
 
-    def supports_music(self) -> bool:
-        """True if the engine generates music from a caption/lyrics/duration
-        request rather than speech. Gates the UI's Music mode and
-        the /api/music route. Every speech engine leaves this False."""
-        return False
-
     def languages(self) -> list[dict[str, str]]:
         """UI language options as [{"code","label"}].
 
@@ -263,7 +245,6 @@ class Engine(abc.ABC):
             "supports_voice_modes": self.supports_voice_modes(),
             "supports_style_clone": self.supports_style_clone(),
             "supports_style_prompt": self.supports_style_prompt(),
-            "supports_music": self.supports_music(),
         }
 
     def engine_info(self) -> dict[str, Any]:

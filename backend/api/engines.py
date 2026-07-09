@@ -47,7 +47,6 @@ class EngineInfoModel(BaseModel):
     supports_voice_modes: bool = False
     supports_style_clone: bool = False
     supports_style_prompt: bool = False
-    supports_music: bool = False
 
 
 class EnginesListResponse(BaseModel):
@@ -111,7 +110,6 @@ def _to_model(info: dict) -> EngineInfoModel:
         supports_voice_modes=info.get("supports_voice_modes", False),
         supports_style_clone=info.get("supports_style_clone", False),
         supports_style_prompt=info.get("supports_style_prompt", False),
-        supports_music=info.get("supports_music", False),
     )
 
 
