@@ -40,19 +40,72 @@ def _existing_volume(path: Path) -> Path:
     return p.anchor and Path(p.anchor) or p
 
 
-def _vram() -> MemStat | None:
-    try:
-        import torch
+#: Lazily-initialized NVML handle. nvmlInit() is not free, and this endpoint is
+#: polled every 2s, so initialize once and remember the failure too.
+_NVML_STATE: dict[str, object] = {"tried": False, "handle": None}
 
-        if not torch.cuda.is_available():
-            return None
-        free, total = torch.cuda.mem_get_info()
-        used = total - free
-        pct = (used / total * 100.0) if total else 0.0
-        return MemStat(used_bytes=int(used), total_bytes=int(total), percent=pct)
-    except Exception as exc:  # noqa: BLE001
-        log.debug("VRAM stats unavailable: %s", exc)
+
+def _nvml_memory() -> tuple[int, int] | None:
+    """Device-wide (used, total) VRAM via NVML, or None if unavailable.
+
+    NVML is the library nvidia-smi itself queries, so it sees every process on
+    the GPU. `torch.cuda.mem_get_info()` does NOT on Windows/WDDM, where the OS
+    virtualizes VRAM: measured 6862 MiB used per the driver against 1.18 GiB
+    per mem_get_info on the same idle machine.
+    """
+    if not _NVML_STATE["tried"]:
+        _NVML_STATE["tried"] = True
+        try:
+            import pynvml
+
+            pynvml.nvmlInit()
+            index = 0
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    index = torch.cuda.current_device()
+            except Exception:  # noqa: BLE001 — default to device 0
+                pass
+            _NVML_STATE["handle"] = pynvml.nvmlDeviceGetHandleByIndex(index)
+        except Exception as exc:  # noqa: BLE001 — no NVIDIA GPU / no binding
+            log.debug("NVML unavailable, falling back to torch: %s", exc)
+            _NVML_STATE["handle"] = None
+
+    handle = _NVML_STATE["handle"]
+    if handle is None:
         return None
+
+    import pynvml
+
+    info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    return int(info.used), int(info.total)
+
+
+def _torch_memory() -> tuple[int, int] | None:
+    """(used, total) VRAM via the CUDA runtime. Under-reports on WDDM."""
+    import torch
+
+    if not torch.cuda.is_available():
+        return None
+    free, total = torch.cuda.mem_get_info()
+    return int(total - free), int(total)
+
+
+def _vram() -> MemStat | None:
+    """Device-wide VRAM. NVML first (accurate), CUDA runtime as a fallback."""
+    for source in (_nvml_memory, _torch_memory):
+        try:
+            result = source()
+        except Exception as exc:  # noqa: BLE001 — one bad source must not 500
+            log.debug("VRAM source %s failed: %s", source.__name__, exc)
+            continue
+        if result is None:
+            continue
+        used, total = result
+        pct = (used / total * 100.0) if total else 0.0
+        return MemStat(used_bytes=used, total_bytes=total, percent=pct)
+    return None
 
 
 @router.get("/stats", response_model=SystemStatsResponse)

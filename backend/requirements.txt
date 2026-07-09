@@ -39,6 +39,11 @@ python-dotenv>=1.0.1
 # System metrics for the hardware status bar (CPU/RAM/disk).
 psutil>=5.9
 
+# Device-wide VRAM for the status bar. torch.cuda.mem_get_info() under-reports
+# on Windows/WDDM (it cannot see other processes' allocations); NVML is what
+# nvidia-smi itself queries. Pure-python binding, optional at runtime.
+nvidia-ml-py>=12.535
+
 # Kokoro TTS engine (optional but recommended). Requires `espeak-ng`
 # installed on the system PATH — see README for the platform install
 # command. Models: https://huggingface.co/hexgrad/Kokoro-82M
