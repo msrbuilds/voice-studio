@@ -45,6 +45,13 @@ MODEL_CATALOG: dict[str, dict[str, str]] = {
         "size": "~3.5 GB",
         "label": "Qwen3-TTS CustomVoice",
     },
+    # Speech-to-text, not a TTS engine — lives in AsrService, not EngineManager.
+    # Listed here so it reuses the shared weight downloader.
+    "whisper": {
+        "repo_id": "openai/whisper-large-v3-turbo",
+        "size": "~1.6 GB",
+        "label": "Whisper large-v3-turbo (ASR)",
+    },
 }
 
 

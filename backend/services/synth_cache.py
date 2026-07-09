@@ -106,14 +106,23 @@ class SynthCache:
             # os.replace can transiently fail with PermissionError on Windows
             # when a reader has the target briefly open (stat / playback). The
             # rename itself is atomic; just retry the lock window.
-            for attempt in range(10):
+            #
+            # Back off exponentially (capped) rather than a flat 20 ms: with
+            # several concurrent readers a fixed 10x20ms budget expires while
+            # the file is still momentarily open, surfacing as a spurious
+            # PermissionError. ~2 s total is far beyond any real lock window
+            # yet still bounded.
+            delay = 0.005
+            deadline = time.monotonic() + 2.0
+            while True:
                 try:
                     os.replace(tmp, path)
                     break
                 except PermissionError:
-                    if attempt == 9:
+                    if time.monotonic() >= deadline:
                         raise
-                    time.sleep(0.02)
+                    time.sleep(delay)
+                    delay = min(delay * 2, 0.05)
         except BaseException:
             try:
                 tmp.unlink(missing_ok=True)

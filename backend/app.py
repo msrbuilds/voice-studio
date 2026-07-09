@@ -28,6 +28,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .api.asr import router as asr_router
 from .api.cache import router as cache_router
 from .api.download import router as download_router
 from .api.engines import router as engines_router
@@ -47,7 +48,11 @@ from .services.model_delete import ModelDeleter
 from .services.engine_uninstall import EngineEnvUninstaller
 from .services.join_cache import JoinCache
 from .services.synth_cache import SynthCache
+from .core.asr.whisper_engine import WhisperEngine
+from .core.gpu_gate import GpuGate
+from .services.asr_cache import AsrCache
 from .services.synthesize import SynthService
+from .services.transcribe import AsrService
 from .services.update_check import UpdateChecker
 from .services.update_run import UpdateRunner
 from .services.voices import VoiceRegistry
@@ -192,6 +197,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if voices:
             voice_registry.register_engine_voices(engine.name, voices)
 
+    # One gate for every GPU consumer: TTS synthesis and ASR transcription
+    # serialize onto a single worker thread so they never contend for VRAM.
+    gpu_gate = GpuGate(settings.synth_timeout_s)
+
     synth_service = SynthService(
         engine_manager=engine_manager,
         voice_registry=voice_registry,
@@ -199,6 +208,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         synth_timeout_s=settings.synth_timeout_s,
         default_cfg_scale=settings.default_cfg_scale,
         cache=synth_cache,
+        gate=gpu_gate,
+    )
+
+    # Speech-to-text. Constructed but NOT loaded (lazy on first transcription)
+    # and deliberately absent from EngineManager: Whisper is audio->text, so it
+    # must never appear in the TTS engine selector.
+    asr_service = AsrService(
+        engine=WhisperEngine(
+            model_id=settings.asr_model_id, device_request=settings.device
+        ),
+        gate=gpu_gate,
+        cache=AsrCache(settings.cache_dir / "asr", enabled=settings.cache_enabled),
+        max_upload_mb=settings.asr_max_upload_mb,
+        max_duration_sec=settings.asr_max_duration_sec,
+        timeout_s=settings.asr_timeout_s,
     )
 
     # Keep the ModelManager around for direct introspection (the
@@ -214,6 +238,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.synth_cache = synth_cache
     app.state.join_cache = join_cache
     app.state.synth_service = synth_service
+    app.state.gpu_gate = gpu_gate
+    app.state.asr_service = asr_service
     app.state.engine_installers = {
         "chatterbox": ChatterboxInstaller(),
         "omnivoice": EngineEnvInstaller("install-omnivoice"),
@@ -241,6 +267,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(stream_router)
     app.include_router(update_router)
     app.include_router(system_router)
+    app.include_router(asr_router)
 
     # ---- static frontend (prod mode only; no-op if frontend/dist is absent)
     _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

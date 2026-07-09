@@ -48,6 +48,10 @@ def get_synth_cache(request: Request) -> SynthCache:
     return request.app.state.synth_cache  # type: ignore[no-any-return]
 
 
+def get_asr_service(request: Request):
+    return request.app.state.asr_service
+
+
 def get_join_cache(request: Request) -> JoinCache:
     return request.app.state.join_cache  # type: ignore[no-any-return]
 
