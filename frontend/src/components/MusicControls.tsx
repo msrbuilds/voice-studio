@@ -65,6 +65,13 @@ export function MusicControls({ theme, onThemeToggle, config, buffer, onChange }
             <input type="range" min={1} max={10} step={0.5} value={buffer.guidanceScale}
               onChange={(e) => onChange({ guidanceScale: Number(e.target.value) })}
               className="w-full accent-orange-600" />
+            <p className={`text-xs mt-1 ${subtle}`}>Higher = follows the prompt more closely. 3 is recommended.</p>
+          </div>
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${label}`}>Temperature: {buffer.temperature.toFixed(2)}</label>
+            <input type="range" min={0.1} max={2} step={0.05} value={buffer.temperature}
+              onChange={(e) => onChange({ temperature: Number(e.target.value) })}
+              className="w-full accent-orange-600" />
           </div>
           <div>
             <label className={`block text-sm font-medium mb-1 ${label}`}>Seed</label>
