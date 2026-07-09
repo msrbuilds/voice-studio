@@ -94,15 +94,6 @@ class MusicRequest:
     fade_in: float = 0.0
     fade_out: float = 0.0
     count: int = 1
-    thinking: bool = False
-    task_type: str = "text2music"
-    src_audio: str = ""       # resolved path (set by the API layer)
-    src_audio_id: str = ""    # cache-key component
-    cover_strength: float = 0.5
-    repaint_start: float = 0.0
-    repaint_end: float = -1.0
-    track_name: str = ""
-    track_classes: str = ""   # comma-joined
     force_regenerate: bool = False
 
 
@@ -530,31 +521,26 @@ class SynthService:
 
         from ..core.exceptions import BackendError
 
-        try:
-            engine = self._engines.get_engine("acestep")
-        except KeyError as exc:  # EngineNotFound subclasses KeyError
-            raise BackendError("music engine (acestep) is not available",
-                               code="engine_unavailable") from exc
-        if not engine.supports_music():
-            raise BackendError("active music engine does not support music",
-                               code="engine_unavailable")
-        if not engine.is_loaded():
-            engine.load()
+        # Resolve the music engine by capability, not by name: any registered
+        # engine whose supports_music() is True can serve this request.
+        engine = next(
+            (e for e in self._engines.list_engines() if e.supports_music()), None
+        )
+        if engine is None:
+            raise BackendError("no music engine is installed",
+                               code="engine_unavailable", http_status=503)
         if not hasattr(engine, "generate_batch"):
             raise BackendError("music engine does not support generation",
-                               code="engine_unavailable")
+                               code="engine_unavailable", http_status=503)
+        if not engine.is_loaded():
+            engine.load()
 
         engine_req = EngineSynthRequest(
             text="", voice_id="",
             caption=req.caption, lyrics=req.lyrics, instrumental=req.instrumental,
             duration_sec=req.duration_sec, music_steps=req.steps, music_seed=req.seed,
             bpm=req.bpm, keyscale=req.key, timesignature=req.time_signature,
-            fade_in=req.fade_in, fade_out=req.fade_out, thinking=req.thinking,
-            task_type=req.task_type, src_audio=(req.src_audio or None),
-            cover_strength=req.cover_strength,
-            repaint_start=req.repaint_start, repaint_end=req.repaint_end,
-            track_name=(req.track_name or None),
-            track_classes=(req.track_classes or None),
+            fade_in=req.fade_in, fade_out=req.fade_out,
         )
         count = max(1, min(4, int(req.count)))
 
@@ -563,14 +549,10 @@ class SynthService:
             results = future.result(timeout=self._timeout_s * count)
 
         base_key = _json.dumps({
-            "engine": "acestep", "caption": req.caption, "lyrics": req.lyrics,
+            "engine": engine.name, "caption": req.caption, "lyrics": req.lyrics,
             "instrumental": req.instrumental, "duration": round(req.duration_sec, 2),
             "steps": req.steps, "seed": req.seed, "bpm": req.bpm, "key": req.key,
             "time_signature": req.time_signature, "fade_in": req.fade_in, "fade_out": req.fade_out,
-            "task_type": req.task_type, "src_audio_id": req.src_audio_id,
-            "cover_strength": req.cover_strength,
-            "repaint_start": req.repaint_start, "repaint_end": req.repaint_end,
-            "track_name": req.track_name, "track_classes": req.track_classes,
         }, sort_keys=True)
 
         out: list[SynthResult] = []
@@ -589,53 +571,9 @@ class SynthService:
             out.append(SynthResult(
                 wav_bytes=res.wav_bytes, sample_rate=res.sample_rate,
                 duration_sec=res.duration_sec, inference_ms=res.inference_ms,
-                cache_hash=cache_hash, cache_hit=False, engine="acestep",
+                cache_hash=cache_hash, cache_hit=False, engine=engine.name,
             ))
         return out
-
-    def inspire_music(self, query: str, instrumental: bool, language: str | None) -> dict:
-        """Run the LM 'Inspiration' flow (create_sample) → a sanity-clamped
-        blueprint dict. Reuses the shared lock. Requires the LM downloaded."""
-        from ..core.exceptions import BackendError
-
-        try:
-            engine = self._engines.get_engine("acestep")
-        except KeyError as exc:
-            raise BackendError("music engine (acestep) is not available",
-                               code="engine_unavailable") from exc
-        if not getattr(engine, "lm_downloaded", lambda: False)():
-            raise BackendError("the AI model (5Hz LM) is not downloaded",
-                               code="lm_unavailable")
-        if not engine.is_loaded():
-            engine.load()
-
-        with self._thread_lock:
-            future = self._executor.submit(engine.inspire, query, instrumental, language)
-            bp = future.result(timeout=self._timeout_s)
-
-        def _clamp_int(v, lo, hi):
-            try:
-                iv = int(v)
-            except (TypeError, ValueError):
-                return None
-            return iv if lo <= iv <= hi else None
-
-        lyrics = bp.get("lyrics") or ""
-        is_instr = bool(bp.get("instrumental")) or lyrics.strip() == "[Instrumental]"
-        dur = bp.get("duration")
-        try:
-            dur = max(10.0, min(240.0, float(dur))) if dur else 30.0
-        except (TypeError, ValueError):
-            dur = 30.0
-        return {
-            "caption": bp.get("caption") or "",
-            "lyrics": "" if is_instr else lyrics,
-            "instrumental": is_instr,
-            "bpm": _clamp_int(bp.get("bpm"), 30, 300),
-            "key": bp.get("keyscale") or "",
-            "time_signature": bp.get("timesignature") or "",
-            "duration_sec": dur,
-        }
 
 
 # ----------------------------------------------------------------- helpers --

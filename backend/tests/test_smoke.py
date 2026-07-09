@@ -673,6 +673,12 @@ def test_base_status_endpoint(tmp_path):
     assert "downloaded" in body and "state" in body
 
 
+def test_music_generate_503_without_music_engine(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    r = client.post("/api/music/generate", json={"caption": "lofi"})
+    assert r.status_code == 503, r.text
+
+
 def test_music_request_body_new_fields():
     from backend.api.schemas import MusicRequestBody
     b = MusicRequestBody(caption="x", key="C major", time_signature="4",
