@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Copy, Download, FileAudio, Loader2, Send, Upload } from "lucide-react";
 import { ApiError, transcribe } from "@/lib/api";
 import { segmentsToSrt, segmentsToVtt } from "@/lib/subtitles";
+import { isRtlText, textDirection } from "@/lib/textStats";
 import { focusRing } from "@/lib/theme";
 import type { AsrStatus, TranscribeBuffer } from "@/types/models";
 
@@ -254,7 +255,10 @@ export function TranscribeEditor({
               onChange={(e) => onChange({ text: e.target.value })}
               rows={10}
               spellCheck={false}
+              dir={textDirection(buffer.text)}
               className={`w-full rounded-lg border px-3 py-2 text-sm resize-y ${
+                isRtlText(buffer.text) ? "text-right" : "text-left"
+              } ${
                 isDark
                   ? "bg-zinc-950 border-zinc-800 text-zinc-100"
                   : "bg-white border-gray-200 text-gray-900"
