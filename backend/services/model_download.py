@@ -35,11 +35,21 @@ def _ignored(name: str, ignore: list[str] | None) -> bool:
 
     return bool(ignore) and any(fnmatch(name, pat) for pat in ignore)
 
+
+def _ignore_for_repo(repo_id: str) -> list[str] | None:
+    """Skip-patterns for a repo, keyed off MODEL_CATALOG. Keeps the Runner
+    signature 2-arg so injected fakes stay simple."""
+    for engine, pats in IGNORE_PATTERNS.items():
+        entry = MODEL_CATALOG.get(engine)
+        if entry and entry["repo_id"] == repo_id:
+            return pats
+    return None
+
 _MAX_LOG_LINES = 500
 _SPEED_WINDOW = 30  # number of (ts, bytes) samples kept for speed/ETA
 
 # A runner downloads `repo_id`, reporting progress via the given Progress.
-Runner = Callable[[str, "Progress", "list[str] | None"], None]
+Runner = Callable[[str, "Progress"], None]
 
 
 class Progress:
@@ -107,17 +117,16 @@ class ModelDownloader:
             self._returncode = None
             self._samples.clear()
             self._samples.append((self._clock(), 0))
-            ignore = IGNORE_PATTERNS.get(engine)
             self._thread = threading.Thread(
-                target=self._run, args=(repo_id, ignore), daemon=True
+                target=self._run, args=(repo_id,), daemon=True
             )
             self._thread.start()
             return self._snapshot_locked()
 
     # -- internals
-    def _run(self, repo_id: str, ignore: list[str] | None = None) -> None:
+    def _run(self, repo_id: str) -> None:
         try:
-            self._runner(repo_id, Progress(self), ignore)
+            self._runner(repo_id, Progress(self))
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self._error = str(exc)
@@ -202,7 +211,7 @@ def _repo_total_bytes(repo_id: str, ignore: list[str] | None = None) -> int | No
         return None
 
 
-def _default_runner(repo_id: str, progress: Progress, ignore: list[str] | None = None) -> None:
+def _default_runner(repo_id: str, progress: Progress) -> None:
     """Download `repo_id` into the local HF cache with live byte progress.
 
     huggingface_hub ≥0.36 does NOT propagate ``tqdm_class`` to individual
@@ -217,6 +226,7 @@ def _default_runner(repo_id: str, progress: Progress, ignore: list[str] | None =
     from huggingface_hub.constants import HF_HUB_CACHE
 
     progress.log(f"Resolving {repo_id} …")
+    ignore = _ignore_for_repo(repo_id)
     total = _repo_total_bytes(repo_id, ignore)
     if total:
         progress.set_total(total)

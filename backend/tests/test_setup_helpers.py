@@ -164,7 +164,7 @@ def test_parse_model_selection_rejects_unknown():
 
 
 def test_catalog_has_expected_engines():
-    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen"}
+    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen", "musicgen"}
     assert dm.MODEL_CATALOG["kokoro"]["repo_id"] == "hexgrad/Kokoro-82M"
     assert dm.MODEL_CATALOG["omnivoice"]["repo_id"] == "k2-fsa/OmniVoice"
 
@@ -398,3 +398,9 @@ def test_repo_total_bytes_skips_ignored(monkeypatch):
     monkeypatch.setattr(huggingface_hub, "HfApi", lambda: _Api())
     assert md._repo_total_bytes("x", ["*.bin"]) == 100
     assert md._repo_total_bytes("x") == 1000
+
+
+def test_ignore_for_repo_resolves_musicgen():
+    from backend.services.model_download import _ignore_for_repo
+    assert _ignore_for_repo("facebook/musicgen-small") == ["*.bin"]
+    assert _ignore_for_repo("hexgrad/Kokoro-82M") is None
