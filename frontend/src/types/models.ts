@@ -25,8 +25,9 @@ export interface MusicBuffer {
   // (current-generation models are instrumental-only).
   lyrics: string;
   instrumental: boolean;
-  durationSec: number;
-  steps: number;
+  durationSec: number;   // 5-30 s (MusicGen's training ceiling)
+  guidanceScale: number; // classifier-free guidance (3.0 default)
+  temperature: number;
   seed: number;
   bpm: number | null;
   key: string;       // "auto" or e.g. "C major"

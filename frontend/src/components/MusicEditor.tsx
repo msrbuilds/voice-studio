@@ -3,17 +3,20 @@ import { Loader2, Music, Download } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 import { generateMusic, musicClipAudioUrl, musicDownloadUrl, type MusicClip } from "@/lib/api";
 import { keyToParam, timeSigToNumerator } from "@/lib/musicOptions";
-import type { MusicBuffer } from "@/types/models";
+import type { EngineInfo, MusicBuffer } from "@/types/models";
 
 interface Props {
   isDark: boolean;
   buffer: MusicBuffer;
   onChange: (partial: Partial<MusicBuffer>) => void;
-  /** True when some registered engine reports supports_music. */
-  engineReady: boolean;
+  /** The registered engine reporting supports_music, if any. */
+  musicEngine: EngineInfo | null;
+  /** Opens the model-download dialog for the music engine. */
+  onDownload: () => void;
 }
 
-export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
+export function MusicEditor({ isDark, buffer, onChange, musicEngine, onDownload }: Props) {
+  const engineReady = !!musicEngine && musicEngine.downloaded;
   const inputBg = isDark ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-200 text-gray-900";
   const sub = isDark ? "text-zinc-400" : "text-gray-600";
   const label = isDark ? "text-zinc-300" : "text-gray-700";
@@ -37,7 +40,8 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
         lyrics: buffer.instrumental ? "" : buffer.lyrics,
         instrumental: buffer.instrumental,
         duration_sec: buffer.durationSec,
-        steps: buffer.steps,
+        guidance_scale: buffer.guidanceScale,
+        temperature: buffer.temperature,
         seed: buffer.seed,
         bpm: buffer.bpm,
         key: keyToParam(buffer.key),
@@ -58,7 +62,7 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
   return (
     <div className="flex-1 overflow-y-auto px-6 py-4">
       <div className="max-w-3xl mx-auto space-y-4">
-        {!engineReady && (
+        {!musicEngine && (
           <div
             className={`rounded-lg border p-3 text-sm ${
               isDark
@@ -68,6 +72,32 @@ export function MusicEditor({ isDark, buffer, onChange, engineReady }: Props) {
           >
             <strong>No music engine installed.</strong> Music generation is unavailable
             until a music model is added.
+          </div>
+        )}
+
+        {musicEngine && !musicEngine.downloaded && (
+          <div
+            className={`rounded-lg border p-3 ${
+              isDark ? "border-zinc-800 bg-zinc-900" : "border-gray-200 bg-gray-50"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className={`text-xs ${sub}`}>
+                {musicEngine.display_name} needs a one-time download (~2.4 GB).
+                32 kHz mono, instrumental only — weights are {musicEngine.license} (non-commercial).
+              </span>
+              <button
+                type="button"
+                onClick={onDownload}
+                className={`text-xs whitespace-nowrap rounded-lg border px-2 py-1 ${
+                  isDark
+                    ? "border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+                    : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                } ${focusRing}`}
+              >
+                Download model
+              </button>
+            </div>
           </div>
         )}
 

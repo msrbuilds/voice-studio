@@ -290,7 +290,8 @@ export interface MusicSample {
   lyrics: string;
   instrumental: boolean;
   durationSec: number;
-  steps: number;
+  guidanceScale: number;
+  temperature: number;
 }
 
 export const MUSIC_SAMPLES: MusicSample[] = [
@@ -302,7 +303,8 @@ export const MUSIC_SAMPLES: MusicSample[] = [
     lyrics: "",
     instrumental: true,
     durationSec: 30,
-    steps: 8,
+    guidanceScale: 3,
+    temperature: 1,
   },
   {
     id: "music-lofi",
@@ -312,7 +314,8 @@ export const MUSIC_SAMPLES: MusicSample[] = [
     lyrics: "",
     instrumental: true,
     durationSec: 30,
-    steps: 8,
+    guidanceScale: 3,
+    temperature: 1,
   },
   {
     id: "music-trailer",
@@ -322,7 +325,8 @@ export const MUSIC_SAMPLES: MusicSample[] = [
     lyrics: "",
     instrumental: true,
     durationSec: 20,
-    steps: 8,
+    guidanceScale: 3,
+    temperature: 1,
   },
   {
     id: "music-synthwave",
@@ -332,7 +336,8 @@ export const MUSIC_SAMPLES: MusicSample[] = [
     lyrics: "",
     instrumental: true,
     durationSec: 30,
-    steps: 8,
+    guidanceScale: 3,
+    temperature: 1,
   },
   {
     id: "music-folk-vocal",
@@ -342,7 +347,8 @@ export const MUSIC_SAMPLES: MusicSample[] = [
     lyrics: "[Verse]\nMorning light on a winding road\nCarry me home, ease my load",
     instrumental: false,
     durationSec: 30,
-    steps: 8,
+    guidanceScale: 3,
+    temperature: 1,
   },
 ];
 
@@ -351,14 +357,16 @@ export function loadMusicSample(s: MusicSample): {
   lyrics: string;
   instrumental: boolean;
   durationSec: number;
-  steps: number;
+  guidanceScale: number;
+  temperature: number;
 } {
   return {
     caption: s.caption,
     lyrics: s.lyrics,
     instrumental: s.instrumental,
     durationSec: s.durationSec,
-    steps: s.steps,
+    guidanceScale: s.guidanceScale,
+    temperature: s.temperature,
   };
 }
 

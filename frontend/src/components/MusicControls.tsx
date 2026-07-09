@@ -56,14 +56,14 @@ export function MusicControls({ theme, onThemeToggle, config, buffer, onChange }
           <h2 className={`text-xs font-semibold uppercase tracking-wide ${heading}`}>Generation</h2>
           <div>
             <label className={`block text-sm font-medium mb-1 ${label}`}>Duration: {buffer.durationSec}s</label>
-            <input type="range" min={10} max={240} step={5} value={buffer.durationSec}
+            <input type="range" min={5} max={30} step={1} value={buffer.durationSec}
               onChange={(e) => onChange({ durationSec: Number(e.target.value) })}
               className="w-full accent-orange-600" />
           </div>
           <div>
-            <label className={`block text-sm font-medium mb-1 ${label}`}>Steps: {buffer.steps}</label>
-            <input type="range" min={1} max={60} step={1} value={buffer.steps}
-              onChange={(e) => onChange({ steps: Number(e.target.value) })}
+            <label className={`block text-sm font-medium mb-1 ${label}`}>Guidance scale: {buffer.guidanceScale.toFixed(1)}</label>
+            <input type="range" min={1} max={10} step={0.5} value={buffer.guidanceScale}
+              onChange={(e) => onChange({ guidanceScale: Number(e.target.value) })}
               className="w-full accent-orange-600" />
           </div>
           <div>

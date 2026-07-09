@@ -268,7 +268,7 @@ export default function App() {
   // Music mode is engine-agnostic: it lights up when any registered engine
   // reports the supports_music capability. None today — the editor renders an
   // empty state and /api/music/generate returns 503.
-  const musicEngineReady = engines.some((e) => e.supports_music);
+  const musicEngine = engines.find((e) => e.supports_music) ?? null;
 
   // Filter the global voice catalog down to the active engine. The
   // sidebar shouldn't offer Kokoro's voices when VibeVoice is active
@@ -908,7 +908,8 @@ export default function App() {
             isDark={isDark}
             buffer={pm.music}
             onChange={pm.setMusic}
-            engineReady={musicEngineReady}
+            musicEngine={musicEngine}
+            onDownload={() => setDownloadEngine("musicgen")}
           />
         ) : (
           <div className="flex-1 overflow-y-auto px-6 py-4">
