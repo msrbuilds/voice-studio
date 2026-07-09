@@ -359,6 +359,7 @@ def test_music_generate_returns_clips_via_stub_engine(tmp_path):
     and exposing generate_batch() serves /api/music/generate."""
     client = _make_client(tmp_path / "v", tmp_path / "u")
     em = client.app.state.engine_manager
+    _drop_music_engines(em)  # otherwise the real MusicGen engine would serve this
 
     class _StubMusic:
         name = "stubmusic"
@@ -386,8 +387,15 @@ def test_music_generate_returns_clips_via_stub_engine(tmp_path):
     assert rf.status_code == 200 and rf.content[:4] == b"fLaC"
 
 
+def _drop_music_engines(em) -> None:
+    """Remove real music engines so tests never load multi-GB weights."""
+    for name in [n for n, e in list(em._engines.items()) if e.supports_music()]:
+        del em._engines[name]
+
+
 def test_music_generate_503_without_music_engine(tmp_path):
     client = _make_client(tmp_path / "v", tmp_path / "u")
+    _drop_music_engines(client.app.state.engine_manager)
     r = client.post("/api/music/generate", json={"caption": "lofi"})
     assert r.status_code == 503, r.text
 
@@ -445,3 +453,29 @@ def test_music_request_body_guidance_and_temperature():
         MusicRequestBody(caption="x", duration_sec=60)     # >30 rejected
     with pytest.raises(Exception):
         MusicRequestBody(caption="x", guidance_scale=0.5)  # <1 rejected
+
+
+def test_musicgen_engine_metadata_and_prompt():
+    from backend.core.engines.musicgen_engine import (
+        MusicGenEngine, _build_prompt, _duration_to_tokens,
+    )
+    e = MusicGenEngine()
+    assert e.name == "musicgen" and e.supports_music() is True
+    assert e.max_speakers() == 0 and e.supports_voice_cloning() is False
+    assert e.license == "CC-BY-NC-4.0"
+    assert e.sample_rate() == 32000
+    assert e.available_voices() == []
+
+    assert _build_prompt("lofi", None, "", "") == "lofi"
+    assert _build_prompt("lofi", 130, "C major", "4") == "lofi, bpm: 130, key: C major, 4/4"
+    assert _duration_to_tokens(10.0) == 500
+    assert _duration_to_tokens(1.0) == 250      # clamped up to 5s
+    assert _duration_to_tokens(999.0) == 1500   # clamped down to 30s
+
+
+def test_musicgen_registered_with_music_capability(tmp_path):
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    engines = {e["name"]: e for e in client.get("/api/engines").json()["engines"]}
+    assert engines["musicgen"]["supports_music"] is True
+    assert engines["musicgen"]["license"] == "CC-BY-NC-4.0"
+    assert engines["musicgen"]["max_speakers"] == 0

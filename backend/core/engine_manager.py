@@ -22,6 +22,7 @@ from .engines.omnivoice_engine import OmniVoiceEngine
 from .engines.vibevoice_engine import VibeVoiceEngine
 from .engines.voxcpm_engine import VoxCPMEngine
 from .engines.qwen_engine import QwenEngine
+from .engines.musicgen_engine import MusicGenEngine
 
 log = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ class EngineManager:
                 model_id=qwen_model_id,
                 device_request=device_request,
             ),
+            "musicgen": MusicGenEngine(device_request=device_request),
         }
 
         # Decide which engine to activate. Priority:
