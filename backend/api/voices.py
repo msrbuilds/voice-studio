@@ -7,8 +7,15 @@ from fastapi.responses import JSONResponse
 
 from ..core.exceptions import BuiltInVoiceProtected, VoiceInvalid, VoiceNotFound
 from ..services.voices import VoiceInfo, VoiceRegistry
-from .deps import get_voice_registry
-from .schemas import UploadVoiceResponse, VoiceInfoModel, VoiceListResponse, VoiceMetaUpdate
+from .deps import get_asr_service, get_voice_registry
+from .schemas import (
+    UploadVoiceResponse,
+    VoiceInfoModel,
+    VoiceListResponse,
+    VoiceMetaUpdate,
+    VoiceTranscribeBody,
+    VoiceTranscribeResponse,
+)
 
 router = APIRouter(prefix="/api/voices", tags=["voices"])
 
@@ -100,6 +107,25 @@ def update_voice_meta(
         engine=info.engine,
         reference_transcript=info.reference_transcript,
     )
+
+
+@router.post("/{voice_id}/transcribe", response_model=VoiceTranscribeResponse)
+def transcribe_voice(
+    voice_id: str,
+    body: VoiceTranscribeBody | None = None,
+    reg: VoiceRegistry = Depends(get_voice_registry),
+    asr=Depends(get_asr_service),
+) -> VoiceTranscribeResponse:
+    """Transcribe a stored reference voice, for VoxCPM's `reference_transcript`.
+
+    Returns the text; it is deliberately NOT persisted here. The user reviews it
+    in the voice-meta dialog and saves via POST /api/voices/{id}/meta.
+    """
+    path = reg.get(voice_id)  # raises VoiceNotFound -> 404
+    result = asr.transcribe_file(
+        str(path), language=(body.language if body else None), timestamps=False
+    )
+    return VoiceTranscribeResponse(text=result.text, language=result.language)
 
 
 @router.delete("/{voice_id}", status_code=status.HTTP_204_NO_CONTENT)

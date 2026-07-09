@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { Loader2, Pencil, Wand2, X } from "lucide-react";
+import { ApiError, transcribeVoice } from "@/lib/api";
 import { focusRing } from "@/lib/theme";
 import type { Voice, VoiceMetadata } from "@/types/models";
 
@@ -16,6 +17,7 @@ export function VoiceMetaDialog({ voice, theme, onClose, onSave }: Props) {
   const [language, setLanguage] = useState("en");
   const [transcript, setTranscript] = useState("");
   const [busy, setBusy] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isDark = theme === "dark";
@@ -46,6 +48,26 @@ export function VoiceMetaDialog({ voice, theme, onClose, onSave }: Props) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Fills the field but does NOT save — the user reviews, then presses Save.
+  const handleTranscribe = async () => {
+    setTranscribing(true);
+    setError(null);
+    try {
+      const res = await transcribeVoice(voice.id, language.trim() || null);
+      setTranscript(res.text);
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 503
+          ? "Speech-to-text weights aren't downloaded yet. Open Transcribe mode to download Whisper."
+          : err instanceof Error
+            ? err.message
+            : String(err),
+      );
+    } finally {
+      setTranscribing(false);
     }
   };
 
@@ -130,9 +152,32 @@ export function VoiceMetaDialog({ voice, theme, onClose, onSave }: Props) {
           </div>
 
           <label className="block">
-            <span className={`text-xs font-medium mb-1 block ${labelText}`}>
-              Reference transcript <span className="opacity-60">(optional, for VoxCPM)</span>
-            </span>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-xs font-medium block ${labelText}`}>
+                Reference transcript <span className="opacity-60">(optional, for VoxCPM)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleTranscribe()}
+                disabled={transcribing || busy}
+                title="Transcribe this clip with Whisper, then review before saving"
+                className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md border transition-colors disabled:cursor-not-allowed ${
+                  isDark
+                    ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700 disabled:text-zinc-500"
+                    : "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300 disabled:text-gray-400"
+                } ${focusRing}`}
+              >
+                {transcribing ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" /> Transcribing…
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="w-3 h-3" /> Transcribe
+                  </>
+                )}
+              </button>
+            </div>
             <textarea
               value={transcript}
               onChange={(e) => setTranscript(e.target.value)}

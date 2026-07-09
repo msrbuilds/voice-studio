@@ -19,6 +19,8 @@ interface Props {
   onImportJson: (file: File) => void;
   onLoadPodcastSample: (sample: Sample) => void;
   onLoadTtsSample: (sample: TtsSample) => void;
+  onExportSubtitles: () => void;
+  subtitlesDisabled: boolean;
 }
 
 export function MiddleToolbar({
@@ -34,6 +36,8 @@ export function MiddleToolbar({
   onImportJson,
   onLoadPodcastSample,
   onLoadTtsSample,
+  onExportSubtitles,
+  subtitlesDisabled,
 }: Props) {
   const generateDisabled = busy || cachedCount === validCount;
   const isPodcast = mode === "podcast";
@@ -96,6 +100,9 @@ export function MiddleToolbar({
           busy={busy}
           onExportJson={onExportJson}
           onImportJson={onImportJson}
+          // Transcribe mode has no generated audio of its own to subtitle.
+          onExportSubtitles={mode === "transcribe" ? undefined : onExportSubtitles}
+          subtitlesDisabled={subtitlesDisabled}
         />
 
         {/* Transcribe mode has no sample scripts — its input is an audio file. */}

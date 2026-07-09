@@ -186,6 +186,17 @@ class AsrTranscribeResponse(BaseModel):
     segments: list[AsrSegmentModel] = []
 
 
+class VoiceTranscribeBody(BaseModel):
+    """Optional language override; omit for auto-detect."""
+
+    language: str | None = None
+
+
+class VoiceTranscribeResponse(BaseModel):
+    text: str
+    language: str
+
+
 class AsrStatusResponse(BaseModel):
     model_id: str
     loaded: bool

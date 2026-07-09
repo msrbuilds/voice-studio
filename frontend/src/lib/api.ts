@@ -102,6 +102,20 @@ export async function transcribe(args: TranscribeArgs): Promise<AsrTranscribeRes
   return (await res.json()) as AsrTranscribeResponse;
 }
 
+/** Transcribe a stored reference voice. The caller decides whether to save it. */
+export async function transcribeVoice(
+  voiceId: string,
+  language?: string | null,
+): Promise<{ text: string; language: string }> {
+  return jsonOrThrow(
+    await fetch(`${API_BASE}/voices/${encodeURIComponent(voiceId)}/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: language ?? null }),
+    }),
+  );
+}
+
 export interface CacheEntryInfo {
   hash: string;
   sample_rate: number;
