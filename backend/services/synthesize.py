@@ -85,8 +85,9 @@ class MusicRequest:
     caption: str
     lyrics: str = ""
     instrumental: bool = True
-    duration_sec: float = 30.0
-    steps: int = 8
+    duration_sec: float = 15.0
+    guidance_scale: float = 3.0
+    temperature: float = 1.0
     seed: int = -1
     bpm: int | None = None
     key: str = ""
@@ -538,7 +539,8 @@ class SynthService:
         engine_req = EngineSynthRequest(
             text="", voice_id="",
             caption=req.caption, lyrics=req.lyrics, instrumental=req.instrumental,
-            duration_sec=req.duration_sec, music_steps=req.steps, music_seed=req.seed,
+            duration_sec=req.duration_sec, music_seed=req.seed,
+            guidance_scale=req.guidance_scale, temperature=req.temperature,
             bpm=req.bpm, keyscale=req.key, timesignature=req.time_signature,
             fade_in=req.fade_in, fade_out=req.fade_out,
         )
@@ -551,7 +553,8 @@ class SynthService:
         base_key = _json.dumps({
             "engine": engine.name, "caption": req.caption, "lyrics": req.lyrics,
             "instrumental": req.instrumental, "duration": round(req.duration_sec, 2),
-            "steps": req.steps, "seed": req.seed, "bpm": req.bpm, "key": req.key,
+            "guidance_scale": req.guidance_scale, "temperature": req.temperature,
+            "seed": req.seed, "bpm": req.bpm, "key": req.key,
             "time_signature": req.time_signature, "fade_in": req.fade_in, "fade_out": req.fade_out,
         }, sort_keys=True)
 

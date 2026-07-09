@@ -69,7 +69,8 @@ export interface MusicRequest {
   lyrics: string;
   instrumental: boolean;
   duration_sec: number;
-  steps: number;
+  guidance_scale: number;
+  temperature: number;
   seed: number;
   bpm: number | null;
   key: string;

@@ -29,7 +29,8 @@ def generate_music(
     try:
         results = svc.synthesize_music(MusicRequest(
             caption=body.caption, lyrics=body.lyrics, instrumental=body.instrumental,
-            duration_sec=body.duration_sec, steps=body.steps, seed=body.seed, bpm=body.bpm,
+            duration_sec=body.duration_sec, seed=body.seed, bpm=body.bpm,
+            guidance_scale=body.guidance_scale, temperature=body.temperature,
             key=body.key, time_signature=body.time_signature,
             fade_in=body.fade_in, fade_out=body.fade_out, count=body.count,
             force_regenerate=body.force_regenerate,

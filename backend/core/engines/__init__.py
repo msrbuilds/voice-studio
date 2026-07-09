@@ -95,8 +95,8 @@ class EngineSynthRequest:
     lyrics: str | None = None           # lyrics, or "[Instrumental]"
     instrumental: bool = False          # force instrumental regardless of lyrics
     duration_sec: float | None = None   # target length
-    music_steps: int | None = None      # sampler steps (engine-specific meaning)
     music_seed: int | None = None       # -1 / None = random
+    guidance_scale: float | None = None  # classifier-free guidance (MusicGen: 3.0)
     bpm: int | None = None              # None = auto
     keyscale: str | None = None         # e.g. "C major"; None/"" = auto
     timesignature: str | None = None    # numerator "2"/"3"/"4"/"6"; None = auto
