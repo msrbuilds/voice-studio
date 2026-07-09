@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     max_text_chars: int = 5000
     synth_timeout_s: int = 600
 
+    # Speech-to-text (Whisper). Not a TTS engine — see services/transcribe.py.
+    asr_model_id: str = "openai/whisper-large-v3-turbo"
+    asr_max_upload_mb: int = 100
+    asr_max_duration_sec: int = 3600
+    asr_timeout_s: int = 1800
+
     # Generation defaults
     default_cfg_scale: float = 1.3
 

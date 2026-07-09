@@ -168,6 +168,31 @@ class SynthRequestBody(BaseModel):
     seed: int | None = Field(default=None, ge=0)
 
 
+# ---- asr (speech-to-text) ----
+
+class AsrSegmentModel(BaseModel):
+    start: float
+    end: float
+    text: str
+
+
+class AsrTranscribeResponse(BaseModel):
+    text: str
+    language: str
+    duration_sec: float
+    inference_ms: int
+    cache_hash: str
+    cache_hit: bool = False
+    segments: list[AsrSegmentModel] = []
+
+
+class AsrStatusResponse(BaseModel):
+    model_id: str
+    loaded: bool
+    downloaded: bool
+    languages: list[EngineLanguageModel] = []
+
+
 class SynthBase64Response(BaseModel):
     audio_b64: str
     sample_rate: int
