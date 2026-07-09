@@ -372,3 +372,29 @@ def test_worktree_is_clean():
     assert studio.worktree_is_clean("?? newfile\n") is False
 
 
+
+
+def test_musicgen_catalog_and_ignore_patterns():
+    from backend.scripts import download_models as dm
+    from backend.services.model_download import DOWNLOADABLE, IGNORE_PATTERNS
+    assert dm.MODEL_CATALOG["musicgen"]["repo_id"] == "facebook/musicgen-small"
+    assert "musicgen" in DOWNLOADABLE
+    assert IGNORE_PATTERNS["musicgen"] == ["*.bin"]
+
+
+def test_repo_total_bytes_skips_ignored(monkeypatch):
+    import backend.services.model_download as md
+
+    class _Sib:
+        def __init__(self, n, s):
+            self.rfilename, self.size, self.lfs = n, s, None
+
+    class _Api:
+        def model_info(self, *a, **kw):
+            return type("I", (), {"siblings": [_Sib("model.safetensors", 100),
+                                               _Sib("pytorch_model.bin", 900)]})()
+
+    import huggingface_hub
+    monkeypatch.setattr(huggingface_hub, "HfApi", lambda: _Api())
+    assert md._repo_total_bytes("x", ["*.bin"]) == 100
+    assert md._repo_total_bytes("x") == 1000

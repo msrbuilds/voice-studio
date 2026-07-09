@@ -19,14 +19,27 @@ from backend.scripts.download_models import MODEL_CATALOG
 
 #: Engines whose weights this downloader can fetch (in-process engines).
 DOWNLOADABLE: frozenset[str] = frozenset(
-    {"vibevoice", "kokoro", "omnivoice", "voxcpm", "qwen"}
+    {"vibevoice", "kokoro", "omnivoice", "voxcpm", "qwen", "musicgen"}
 )
+
+#: Per-engine HF file patterns to skip (duplicate/unused weight formats).
+#: MusicGen ships pytorch_model.bin AND model.safetensors plus audiocraft state
+#: dicts; safetensors-only is ~2.4 GB instead of ~5.8 GB.
+IGNORE_PATTERNS: dict[str, list[str]] = {
+    "musicgen": ["*.bin"],
+}
+
+
+def _ignored(name: str, ignore: list[str] | None) -> bool:
+    from fnmatch import fnmatch
+
+    return bool(ignore) and any(fnmatch(name, pat) for pat in ignore)
 
 _MAX_LOG_LINES = 500
 _SPEED_WINDOW = 30  # number of (ts, bytes) samples kept for speed/ETA
 
 # A runner downloads `repo_id`, reporting progress via the given Progress.
-Runner = Callable[[str, "Progress"], None]
+Runner = Callable[[str, "Progress", "list[str] | None"], None]
 
 
 class Progress:
@@ -94,16 +107,17 @@ class ModelDownloader:
             self._returncode = None
             self._samples.clear()
             self._samples.append((self._clock(), 0))
+            ignore = IGNORE_PATTERNS.get(engine)
             self._thread = threading.Thread(
-                target=self._run, args=(repo_id,), daemon=True
+                target=self._run, args=(repo_id, ignore), daemon=True
             )
             self._thread.start()
             return self._snapshot_locked()
 
     # -- internals
-    def _run(self, repo_id: str) -> None:
+    def _run(self, repo_id: str, ignore: list[str] | None = None) -> None:
         try:
-            self._runner(repo_id, Progress(self))
+            self._runner(repo_id, Progress(self), ignore)
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self._error = str(exc)
@@ -167,7 +181,7 @@ class ModelDownloader:
         }
 
 
-def _repo_total_bytes(repo_id: str) -> int | None:
+def _repo_total_bytes(repo_id: str, ignore: list[str] | None = None) -> int | None:
     """Best-effort total download size for a repo's current revision."""
     try:
         from huggingface_hub import HfApi
@@ -175,6 +189,8 @@ def _repo_total_bytes(repo_id: str) -> int | None:
         info = HfApi().model_info(repo_id, files_metadata=True, timeout=10)
         total = 0
         for sib in info.siblings or []:
+            if _ignored(getattr(sib, "rfilename", ""), ignore):
+                continue
             size = getattr(sib, "size", None)
             if size is None:
                 lfs = getattr(sib, "lfs", None)
@@ -186,7 +202,7 @@ def _repo_total_bytes(repo_id: str) -> int | None:
         return None
 
 
-def _default_runner(repo_id: str, progress: Progress) -> None:
+def _default_runner(repo_id: str, progress: Progress, ignore: list[str] | None = None) -> None:
     """Download `repo_id` into the local HF cache with live byte progress.
 
     huggingface_hub ≥0.36 does NOT propagate ``tqdm_class`` to individual
@@ -201,7 +217,7 @@ def _default_runner(repo_id: str, progress: Progress) -> None:
     from huggingface_hub.constants import HF_HUB_CACHE
 
     progress.log(f"Resolving {repo_id} …")
-    total = _repo_total_bytes(repo_id)
+    total = _repo_total_bytes(repo_id, ignore)
     if total:
         progress.set_total(total)
         progress.log(f"Total download size: {total / (1024 * 1024):.0f} MB")
@@ -242,7 +258,7 @@ def _default_runner(repo_id: str, progress: Progress) -> None:
     poll_thread = threading.Thread(target=_poll, daemon=True, name="dl-poll")
     poll_thread.start()
     try:
-        snapshot_download(repo_id)
+        snapshot_download(repo_id, ignore_patterns=ignore or None)
         progress.log("Download complete.")
     finally:
         _stop.set()
