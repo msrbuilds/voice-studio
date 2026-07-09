@@ -2,6 +2,7 @@ import { Check, Loader2, Play, RefreshCw, Square, Trash2 } from "lucide-react";
 import { Download } from "lucide-react";
 import type { Segment, Speaker } from "@/types/models";
 import { focusRing } from "@/lib/theme";
+import { isRtlText, textDirection } from "@/lib/textStats";
 
 interface Props {
   segment: Segment;
@@ -219,7 +220,10 @@ export function SegmentCard({
           placeholder="Enter text for this segment…"
           disabled={isActive || busy}
           rows={3}
+          dir={textDirection(segment.text)}
           className={`w-full px-3 py-2.5 rounded-lg text-sm border resize-none focus:outline-none focus:border-orange-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            isRtlText(segment.text) ? "text-right" : "text-left"
+          } ${
             isDark
               ? "bg-zinc-800 border-zinc-700 text-white placeholder-zinc-500"
               : "bg-white border-gray-300 text-gray-900 placeholder-gray-400"

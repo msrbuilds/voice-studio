@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Loader2, Play, RefreshCw, Square } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 import type { EngineLanguage, Voice } from "@/types/models";
-import { textStats, fmtDuration } from "@/lib/textStats";
+import { textStats, fmtDuration, isRtlText, textDirection } from "@/lib/textStats";
 import { DESIGN_CHIPS, NONVERBAL_TAGS, appendDesignChip, type OmniMode } from "@/lib/voiceModes";
 import { LanguageSelect } from "./LanguageSelect";
 
@@ -99,7 +99,10 @@ export function TtsEditor(props: Props) {
         value={text}
         onChange={(e) => onTextChange(e.target.value)}
         placeholder="Type or paste text to synthesize…"
-        className={`w-full min-h-[260px] rounded-xl border p-4 text-sm leading-relaxed focus:outline-none focus:border-orange-500 ${inputBg}`}
+        dir={textDirection(text)}
+        className={`w-full min-h-[260px] rounded-xl border p-4 text-sm leading-relaxed focus:outline-none focus:border-orange-500 ${inputBg} ${
+          isRtlText(text) ? "text-right" : "text-left"
+        }`}
       />
 
       {/* OmniVoice inline non-verbal sounds — insert a tag at the cursor */}

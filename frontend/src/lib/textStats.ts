@@ -35,3 +35,14 @@ export function isRtlText(text: string | null | undefined): boolean {
   const ltr = (text.match(/[A-Za-z]/g) || []).length;
   return rtl > ltr;
 }
+
+/**
+ * The `dir` attribute for a text surface holding `text`.
+ *
+ * Preferred over the native `dir="auto"`, which decides from the *first strong
+ * character*: an Urdu sentence that happens to open with an English word would
+ * be laid out left-to-right. `isRtlText` weighs the whole string instead.
+ */
+export function textDirection(text: string | null | undefined): "rtl" | "ltr" {
+  return isRtlText(text) ? "rtl" : "ltr";
+}

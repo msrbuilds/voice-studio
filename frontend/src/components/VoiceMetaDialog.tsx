@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Pencil, Wand2, X } from "lucide-react";
 import { ApiError, transcribeVoice } from "@/lib/api";
 import { focusRing } from "@/lib/theme";
+import { isRtlText, textDirection } from "@/lib/textStats";
 import type { Voice, VoiceMetadata } from "@/types/models";
 
 interface Props {
@@ -183,7 +184,10 @@ export function VoiceMetaDialog({ voice, theme, onClose, onSave }: Props) {
               onChange={(e) => setTranscript(e.target.value)}
               rows={2}
               placeholder="Exact words spoken in this voice's reference clip"
-              className={`w-full px-3 py-2 ${inputBg} ${inputBorder} border rounded-md text-sm ${inputText} ${placeholder} focus:outline-none focus:border-orange-500`}
+              dir={textDirection(transcript)}
+              className={`w-full px-3 py-2 ${inputBg} ${inputBorder} border rounded-md text-sm ${inputText} ${placeholder} focus:outline-none focus:border-orange-500 ${
+                isRtlText(transcript) ? "text-right" : "text-left"
+              }`}
             />
           </label>
         </div>
