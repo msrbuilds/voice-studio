@@ -2,7 +2,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import { SampleMenu } from "./SampleMenu";
 import { ImportExportMenu } from "./ImportExportMenu";
 import { ModeToggle } from "./ModeToggle";
-import type { Sample, TtsSample, MusicSample } from "@/lib/samples";
+import type { Sample, TtsSample } from "@/lib/samples";
 import type { ProjectMode } from "@/types/models";
 import { focusRing } from "@/lib/theme";
 
@@ -19,7 +19,6 @@ interface Props {
   onImportJson: (file: File) => void;
   onLoadPodcastSample: (sample: Sample) => void;
   onLoadTtsSample: (sample: TtsSample) => void;
-  onLoadMusicSample: (sample: MusicSample) => void;
 }
 
 export function MiddleToolbar({
@@ -35,7 +34,6 @@ export function MiddleToolbar({
   onImportJson,
   onLoadPodcastSample,
   onLoadTtsSample,
-  onLoadMusicSample,
 }: Props) {
   const generateDisabled = busy || cachedCount === validCount;
   const isPodcast = mode === "podcast";
@@ -106,7 +104,6 @@ export function MiddleToolbar({
             mode={mode}
             onLoadPodcast={onLoadPodcastSample}
             onLoadTts={onLoadTtsSample}
-            onLoadMusic={onLoadMusicSample}
           />
         )}
       </div>

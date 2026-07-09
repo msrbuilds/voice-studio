@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Sparkles } from "lucide-react";
-import { PODCAST_SAMPLES, TTS_SAMPLES, MUSIC_SAMPLES, loadSample, loadTtsSample, loadMusicSample, type Sample, type TtsSample, type MusicSample } from "@/lib/samples";
+import { PODCAST_SAMPLES, TTS_SAMPLES, loadSample, loadTtsSample, type Sample, type TtsSample } from "@/lib/samples";
 import type { ProjectMode } from "@/types/models";
 import { focusRing } from "@/lib/theme";
 
@@ -9,10 +9,9 @@ interface Props {
   mode: ProjectMode;
   onLoadPodcast: (sample: Sample) => void;
   onLoadTts: (sample: TtsSample) => void;
-  onLoadMusic: (sample: MusicSample) => void;
 }
 
-export function SampleMenu({ isDark, mode, onLoadPodcast, onLoadTts, onLoadMusic }: Props) {
+export function SampleMenu({ isDark, mode, onLoadPodcast, onLoadTts }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -70,24 +69,6 @@ export function SampleMenu({ isDark, mode, onLoadPodcast, onLoadTts, onLoadMusic
                     </div>
                   </button>
                 ))
-              : mode === "music"
-              ? MUSIC_SAMPLES.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => { onLoadMusic(s); setOpen(false); }}
-                    className={`block w-full text-left p-3 border-l-2 transition-colors ${
-                      isDark ? "border-transparent hover:border-orange-500 hover:bg-zinc-800"
-                             : "border-transparent hover:border-orange-500 hover:bg-gray-50"
-                    } ${focusRing}`}
-                  >
-                    <div className={`text-sm font-medium ${isDark ? "text-white" : "text-gray-900"}`}>{s.name}</div>
-                    <div className={`text-xs mt-0.5 ${isDark ? "text-zinc-400" : "text-gray-600"}`}>{s.description}</div>
-                    <div className={`text-xs mt-1 ${isDark ? "text-zinc-600" : "text-gray-600"}`}>
-                      {s.instrumental ? "instrumental" : "with vocals"} · {s.durationSec}s
-                    </div>
-                  </button>
-                ))
               : TTS_SAMPLES.map((s) => (
                   <button
                     key={s.id}
@@ -109,5 +90,5 @@ export function SampleMenu({ isDark, mode, onLoadPodcast, onLoadTts, onLoadMusic
   );
 }
 
-export { PODCAST_SAMPLES, TTS_SAMPLES, MUSIC_SAMPLES, loadSample, loadTtsSample, loadMusicSample };
-export type { Sample, TtsSample, MusicSample };
+export { PODCAST_SAMPLES, TTS_SAMPLES, loadSample, loadTtsSample };
+export type { Sample, TtsSample };

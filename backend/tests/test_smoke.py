@@ -334,81 +334,16 @@ def test_system_stats(tmp_path):
     assert body["vram"] is None or body["vram"]["total_bytes"] > 0
 
 
-def test_engine_synth_request_has_music_fields():
-    from backend.core.engines import EngineSynthRequest
-    r = EngineSynthRequest(text="", voice_id="", caption="lofi", lyrics="[Instrumental]",
-                           instrumental=True, duration_sec=15.0, guidance_scale=3.0,
-                           temperature=1.0, music_seed=42, bpm=120)
-    assert r.caption == "lofi" and r.instrumental is True and r.duration_sec == 15.0
-    assert r.guidance_scale == 3.0 and r.temperature == 1.0
+def test_music_routes_are_gone(tmp_path):
+    """The music stack was removed; no /api/music/* route may be registered.
 
-
-def test_engine_supports_music_default_false():
-    from backend.core.engines.qwen_engine import QwenEngine
-    assert QwenEngine().supports_music() is False
-
-
-def test_music_generate_requires_caption(tmp_path):
+    Asserted against the router table rather than a request, because the prod
+    SPA catch-all (mounted when frontend/dist exists) answers unknown GET paths
+    and would turn a missing route into 405/200 instead of 404.
+    """
     client = _make_client(tmp_path / "v", tmp_path / "u")
-    r = client.post("/api/music/generate", json={"caption": ""})
-    assert r.status_code == 422
-
-
-def test_music_generate_returns_clips_via_stub_engine(tmp_path):
-    """The music seam is engine-agnostic: any engine reporting supports_music()
-    and exposing generate_batch() serves /api/music/generate."""
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    em = client.app.state.engine_manager
-    _drop_music_engines(em)  # otherwise the real MusicGen engine would serve this
-
-    class _StubMusic:
-        name = "stubmusic"
-        def is_loaded(self): return True
-        def load(self): pass
-        def supports_music(self): return True
-        def sample_rate(self): return 32000
-        def generate_batch(self, req, count):
-            import numpy as np
-            from backend.core.engines import EngineResult, wrap_pcm_as_wav
-            assert req.caption == "lofi"
-            wav = wrap_pcm_as_wav(np.zeros(32000, dtype=np.float32), 32000)
-            return [EngineResult(wav_bytes=wav, sample_rate=32000, duration_sec=1.0,
-                                 inference_ms=5) for _ in range(count)]
-    em._engines["stubmusic"] = _StubMusic()
-
-    r = client.post("/api/music/generate", json={"caption": "lofi", "count": 2})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert len(body["clips"]) == 2
-    h = body["clips"][0]["cache_hash"]
-    assert body["clips"][0]["sample_rate"] == 32000
-    assert client.get(f"/api/cache/{h}/audio").status_code == 200
-    rf = client.get(f"/api/music/download/{h}?format=flac")
-    assert rf.status_code == 200 and rf.content[:4] == b"fLaC"
-
-
-def _drop_music_engines(em) -> None:
-    """Remove real music engines so tests never load multi-GB weights."""
-    for name in [n for n, e in list(em._engines.items()) if e.supports_music()]:
-        del em._engines[name]
-
-
-def test_music_generate_503_without_music_engine(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    _drop_music_engines(client.app.state.engine_manager)
-    r = client.post("/api/music/generate", json={"caption": "lofi"})
-    assert r.status_code == 503, r.text
-
-
-def test_music_request_body_new_fields():
-    from backend.api.schemas import MusicRequestBody
-    b = MusicRequestBody(caption="x", key="C major", time_signature="4",
-                         fade_in=1.5, fade_out=2.0, count=3, bpm=120)
-    assert b.count == 3 and b.key == "C major" and b.fade_in == 1.5
-
-    import pytest
-    with pytest.raises(Exception):
-        MusicRequestBody(caption="x", count=9)  # >4 rejected
+    paths = [getattr(r, "path", "") for r in client.app.routes]
+    assert not [p for p in paths if p.startswith("/api/music")], paths
 
 
 if __name__ == "__main__":
@@ -440,42 +375,3 @@ if __name__ == "__main__":
                 sys.exit(1)
     _restore()
     print("OK")
-
-
-def test_music_request_body_guidance_and_temperature():
-    from backend.api.schemas import MusicRequestBody
-    b = MusicRequestBody(caption="x")
-    assert b.guidance_scale == 3.0 and b.temperature == 1.0 and b.duration_sec == 15.0
-    assert not hasattr(b, "steps")
-
-    import pytest
-    with pytest.raises(Exception):
-        MusicRequestBody(caption="x", duration_sec=60)     # >30 rejected
-    with pytest.raises(Exception):
-        MusicRequestBody(caption="x", guidance_scale=0.5)  # <1 rejected
-
-
-def test_musicgen_engine_metadata_and_prompt():
-    from backend.core.engines.musicgen_engine import (
-        MusicGenEngine, _build_prompt, _duration_to_tokens,
-    )
-    e = MusicGenEngine()
-    assert e.name == "musicgen" and e.supports_music() is True
-    assert e.max_speakers() == 0 and e.supports_voice_cloning() is False
-    assert e.license == "CC-BY-NC-4.0"
-    assert e.sample_rate() == 32000
-    assert e.available_voices() == []
-
-    assert _build_prompt("lofi", None, "", "") == "lofi"
-    assert _build_prompt("lofi", 130, "C major", "4") == "lofi, bpm: 130, key: C major, 4/4"
-    assert _duration_to_tokens(10.0) == 500
-    assert _duration_to_tokens(1.0) == 250      # clamped up to 5s
-    assert _duration_to_tokens(999.0) == 1500   # clamped down to 30s
-
-
-def test_musicgen_registered_with_music_capability(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    engines = {e["name"]: e for e in client.get("/api/engines").json()["engines"]}
-    assert engines["musicgen"]["supports_music"] is True
-    assert engines["musicgen"]["license"] == "CC-BY-NC-4.0"
-    assert engines["musicgen"]["max_speakers"] == 0

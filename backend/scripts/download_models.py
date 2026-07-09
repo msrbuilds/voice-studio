@@ -45,11 +45,6 @@ MODEL_CATALOG: dict[str, dict[str, str]] = {
         "size": "~3.5 GB",
         "label": "Qwen3-TTS CustomVoice",
     },
-    "musicgen": {
-        "repo_id": "facebook/musicgen-small",
-        "size": "~2.4 GB",
-        "label": "MusicGen Small (Music)",
-    },
 }
 
 

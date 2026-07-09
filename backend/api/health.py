@@ -88,7 +88,6 @@ def config(
                 supports_voice_modes=info.get("supports_voice_modes", False),
                 supports_style_clone=info.get("supports_style_clone", False),
                 supports_style_prompt=info.get("supports_style_prompt", False),
-                supports_music=info.get("supports_music", False),
             )
             for info in em.info()
         ],

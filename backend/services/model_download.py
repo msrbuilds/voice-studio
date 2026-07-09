@@ -19,31 +19,8 @@ from backend.scripts.download_models import MODEL_CATALOG
 
 #: Engines whose weights this downloader can fetch (in-process engines).
 DOWNLOADABLE: frozenset[str] = frozenset(
-    {"vibevoice", "kokoro", "omnivoice", "voxcpm", "qwen", "musicgen"}
+    {"vibevoice", "kokoro", "omnivoice", "voxcpm", "qwen"}
 )
-
-#: Per-engine HF file patterns to skip (duplicate/unused weight formats).
-#: MusicGen ships pytorch_model.bin AND model.safetensors plus audiocraft state
-#: dicts; safetensors-only is ~2.4 GB instead of ~5.8 GB.
-IGNORE_PATTERNS: dict[str, list[str]] = {
-    "musicgen": ["*.bin"],
-}
-
-
-def _ignored(name: str, ignore: list[str] | None) -> bool:
-    from fnmatch import fnmatch
-
-    return bool(ignore) and any(fnmatch(name, pat) for pat in ignore)
-
-
-def _ignore_for_repo(repo_id: str) -> list[str] | None:
-    """Skip-patterns for a repo, keyed off MODEL_CATALOG. Keeps the Runner
-    signature 2-arg so injected fakes stay simple."""
-    for engine, pats in IGNORE_PATTERNS.items():
-        entry = MODEL_CATALOG.get(engine)
-        if entry and entry["repo_id"] == repo_id:
-            return pats
-    return None
 
 _MAX_LOG_LINES = 500
 _SPEED_WINDOW = 30  # number of (ts, bytes) samples kept for speed/ETA
@@ -190,7 +167,7 @@ class ModelDownloader:
         }
 
 
-def _repo_total_bytes(repo_id: str, ignore: list[str] | None = None) -> int | None:
+def _repo_total_bytes(repo_id: str) -> int | None:
     """Best-effort total download size for a repo's current revision."""
     try:
         from huggingface_hub import HfApi
@@ -198,8 +175,6 @@ def _repo_total_bytes(repo_id: str, ignore: list[str] | None = None) -> int | No
         info = HfApi().model_info(repo_id, files_metadata=True, timeout=10)
         total = 0
         for sib in info.siblings or []:
-            if _ignored(getattr(sib, "rfilename", ""), ignore):
-                continue
             size = getattr(sib, "size", None)
             if size is None:
                 lfs = getattr(sib, "lfs", None)
@@ -226,8 +201,7 @@ def _default_runner(repo_id: str, progress: Progress) -> None:
     from huggingface_hub.constants import HF_HUB_CACHE
 
     progress.log(f"Resolving {repo_id} …")
-    ignore = _ignore_for_repo(repo_id)
-    total = _repo_total_bytes(repo_id, ignore)
+    total = _repo_total_bytes(repo_id)
     if total:
         progress.set_total(total)
         progress.log(f"Total download size: {total / (1024 * 1024):.0f} MB")
@@ -268,7 +242,7 @@ def _default_runner(repo_id: str, progress: Progress) -> None:
     poll_thread = threading.Thread(target=_poll, daemon=True, name="dl-poll")
     poll_thread.start()
     try:
-        snapshot_download(repo_id, ignore_patterns=ignore or None)
+        snapshot_download(repo_id)
         progress.log("Download complete.")
     finally:
         _stop.set()

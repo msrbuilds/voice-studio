@@ -1,4 +1,4 @@
-import { Mic2, FileText, Music } from "lucide-react";
+import { Mic2, FileText } from "lucide-react";
 import type { ProjectMode } from "@/types/models";
 import { focusRing } from "@/lib/theme";
 
@@ -15,7 +15,7 @@ export function ModeChooser({ isDark, onPick }: Props) {
   const sub = isDark ? "text-zinc-400" : "text-gray-600";
   return (
     <div className="flex-1 flex items-center justify-center p-8">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl w-full">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl w-full">
         <button type="button" onClick={() => onPick("tts")}
           className={`text-left p-6 rounded-xl border transition-colors ${card} ${focusRing}`}>
           <FileText className="w-8 h-8 text-orange-400 mb-3" />
@@ -27,12 +27,6 @@ export function ModeChooser({ isDark, onPick }: Props) {
           <Mic2 className="w-8 h-8 text-orange-400 mb-3" />
           <div className={`font-semibold ${title}`}>Podcast</div>
           <p className={`text-sm mt-1 ${sub}`}>Build a multi-speaker conversation from segments.</p>
-        </button>
-        <button type="button" onClick={() => onPick("music")}
-          className={`text-left p-6 rounded-xl border transition-colors ${card} ${focusRing}`}>
-          <Music className="w-8 h-8 text-orange-400 mb-3" />
-          <div className={`font-semibold ${title}`}>Music</div>
-          <p className={`text-sm mt-1 ${sub}`}>Generate music from a text prompt.</p>
         </button>
       </div>
     </div>

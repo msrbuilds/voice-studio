@@ -7,7 +7,7 @@ export interface EngineLanguage {
   label: string;
 }
 
-export type ProjectMode = "tts" | "podcast" | "music";
+export type ProjectMode = "tts" | "podcast";
 
 export interface TtsBuffer {
   text: string;
@@ -17,24 +17,6 @@ export interface TtsBuffer {
   // ignore these. Mode is derived when unset (see lib/voiceModes.ts).
   omnivoiceMode?: "clone" | "design" | "auto";
   voiceDesign?: string;
-}
-
-export interface MusicBuffer {
-  caption: string;
-  // Retained for a future vocal-capable music model; not rendered today
-  // (current-generation models are instrumental-only).
-  lyrics: string;
-  instrumental: boolean;
-  durationSec: number;   // 5-30 s (MusicGen's training ceiling)
-  guidanceScale: number; // classifier-free guidance (3.0 default)
-  temperature: number;
-  seed: number;
-  bpm: number | null;
-  key: string;       // "auto" or e.g. "C major"
-  timeSig: string;   // "auto" or "4/4","3/4","2/4","6/8"
-  fadeIn: number;
-  fadeOut: number;
-  count: number;     // 1–4 variations
 }
 
 export interface Voice {
@@ -91,7 +73,6 @@ export interface EngineInfo {
   supports_voice_modes: boolean;
   supports_style_clone: boolean;
   supports_style_prompt: boolean;
-  supports_music?: boolean;
 }
 
 export interface InstallStatus {
