@@ -81,7 +81,7 @@ class SynthRequest:
 
 @dataclass
 class MusicRequest:
-    """A text-to-music request (ACE-Step). No speakers/voices."""
+    """A text-to-music request. No speakers/voices."""
     caption: str
     lyrics: str = ""
     instrumental: bool = True
@@ -509,9 +509,9 @@ class SynthService:
             engine=engine_name,
         )
 
-    # -- music (ACE-Step) --
+    # -- music --
     def synthesize_music(self, req: MusicRequest) -> list[SynthResult]:
-        """Generate 1–4 music clips via the ACE-Step engine, reusing the same GPU
+        """Generate 1–4 music clips via the registered music engine, reusing the same GPU
         lock + executor + cache as TTS (so music and speech never run
         concurrently). Bypasses speaker/voice resolution entirely. Returns one
         SynthResult per clip; each clip is cached (WAV) so it can be played and

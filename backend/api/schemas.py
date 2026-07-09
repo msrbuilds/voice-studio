@@ -169,7 +169,7 @@ class SynthRequestBody(BaseModel):
     seed: int | None = Field(default=None, ge=0)
 
 
-# ---- music (ACE-Step) ----
+# ---- music ----
 
 class MusicRequestBody(BaseModel):
     caption: str = Field(..., min_length=1, max_length=512,

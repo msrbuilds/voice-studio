@@ -186,7 +186,7 @@ class Engine(abc.ABC):
 
     def supports_music(self) -> bool:
         """True if the engine generates music from a caption/lyrics/duration
-        request (ACE-Step) rather than speech. Gates the UI's Music mode and
+        request rather than speech. Gates the UI's Music mode and
         the /api/music route. Every speech engine leaves this False."""
         return False
 
