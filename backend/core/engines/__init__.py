@@ -90,26 +90,18 @@ class EngineSynthRequest:
     top_k: int | None = None
     repetition_penalty: float | None = None
     seed: int | None = None
-    # --- ACE-Step music generation only (other engines ignore) ---
+    # --- Music generation only (speech engines ignore) ---
     caption: str | None = None          # style/genre prompt
     lyrics: str | None = None           # lyrics, or "[Instrumental]"
     instrumental: bool = False          # force instrumental regardless of lyrics
-    duration_sec: float | None = None   # target length (10–240 s in the UI)
-    music_steps: int | None = None      # diffusion steps (turbo default 8)
+    duration_sec: float | None = None   # target length
+    music_steps: int | None = None      # sampler steps (engine-specific meaning)
     music_seed: int | None = None       # -1 / None = random
     bpm: int | None = None              # None = auto
     keyscale: str | None = None         # e.g. "C major"; None/"" = auto
     timesignature: str | None = None    # numerator "2"/"3"/"4"/"6"; None = auto
     fade_in: float | None = None
     fade_out: float | None = None
-    thinking: bool = False              # LM chain-of-thought planning
-    task_type: str | None = None        # "text2music" (default) | "cover" | "repaint"
-    src_audio: str | None = None        # resolved path to a source clip (cover/repaint)
-    cover_strength: float | None = None  # 0.0–1.0; 0.2 = loose restyle
-    repaint_start: float | None = None   # seconds
-    repaint_end: float | None = None     # seconds; -1 = to end
-    track_name: str | None = None        # extract/lego: one of TRACK_NAMES
-    track_classes: str | None = None     # complete: comma-joined track classes
 
 
 class Engine(abc.ABC):
@@ -194,7 +186,7 @@ class Engine(abc.ABC):
 
     def supports_music(self) -> bool:
         """True if the engine generates music from a caption/lyrics/duration
-        request (ACE-Step) rather than speech. Gates the UI's Music mode and
+        request rather than speech. Gates the UI's Music mode and
         the /api/music route. Every speech engine leaves this False."""
         return False
 

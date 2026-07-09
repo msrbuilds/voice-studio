@@ -164,17 +164,9 @@ def test_parse_model_selection_rejects_unknown():
 
 
 def test_catalog_has_expected_engines():
-    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen", "acestep"}
+    assert set(dm.MODEL_CATALOG) == {"vibevoice", "kokoro", "chatterbox", "omnivoice", "voxcpm", "qwen"}
     assert dm.MODEL_CATALOG["kokoro"]["repo_id"] == "hexgrad/Kokoro-82M"
     assert dm.MODEL_CATALOG["omnivoice"]["repo_id"] == "k2-fsa/OmniVoice"
-
-
-def test_acestep_in_catalog_and_downloadable():
-    from backend.services.model_download import DOWNLOADABLE, ACESTEP_IGNORE_PATTERNS
-    assert dm.MODEL_CATALOG["acestep"]["repo_id"] == "ACE-Step/Ace-Step1.5"
-    assert "acestep" in DOWNLOADABLE
-    # Core-only: the 1.7B LM subdir is excluded from the default fetch.
-    assert any("acestep-5Hz-lm-1.7B" in p for p in ACESTEP_IGNORE_PATTERNS)
 
 
 def test_mount_frontend_serves_index_when_dist_present(tmp_path):
@@ -380,21 +372,3 @@ def test_worktree_is_clean():
     assert studio.worktree_is_clean("?? newfile\n") is False
 
 
-def test_acestep_paths():
-    assert studio.acestep_repo_dir(Path("/repo")) == Path("/repo/backend/vendor/ace-step")
-    assert studio.acestep_ready_marker(Path("/repo")) == Path("/repo/backend/vendor/ace-step/.acestep-ready")
-
-
-def test_acestep_clone_cmd():
-    dest = Path("/repo/backend/vendor/ace-step")
-    cmd = studio._acestep_clone_cmd(dest)
-    assert cmd[:2] == ["git", "clone"]
-    assert studio.ACESTEP_REPO_URL in cmd
-    assert str(dest) in cmd
-
-
-def test_install_acestep_subcommand(monkeypatch):
-    monkeypatch.setattr(studio, "_ensure_acestep_env", lambda: True)
-    assert studio.main(["install-acestep"]) == 0
-    monkeypatch.setattr(studio, "_ensure_acestep_env", lambda: False)
-    assert studio.main(["install-acestep"]) == 1

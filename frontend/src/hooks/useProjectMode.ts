@@ -18,16 +18,6 @@ const EMPTY_MUSIC: MusicBuffer = {
   fadeIn: 0,
   fadeOut: 0,
   count: 1,
-  thinking: true,
-  subMode: "create",
-  srcAudioId: null,
-  srcName: "",
-  srcDurationSec: 0,
-  coverStrength: 0.5,
-  repaintStart: 0,
-  repaintEnd: -1,
-  trackName: "drums",
-  trackClasses: [],
 };
 
 function readMode(): ProjectMode | null {

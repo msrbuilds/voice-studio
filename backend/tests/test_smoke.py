@@ -347,330 +347,48 @@ def test_engine_supports_music_default_false():
     assert QwenEngine().supports_music() is False
 
 
-def test_music_inspire_and_lm_status(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    em = client.app.state.engine_manager
-
-    class _StubAce:
-        name = "acestep"
-        def is_loaded(self): return True
-        def load(self): pass
-        def supports_music(self): return True
-        def lm_downloaded(self): return True
-        def inspire(self, query, instrumental, language):
-            return {"caption": "epic", "lyrics": "la la", "instrumental": False,
-                    "bpm": 120, "duration": 30.0, "keyscale": "C minor",
-                    "timesignature": "4", "language": "en"}
-    em._engines["acestep"] = _StubAce()
-
-    r = client.post("/api/music/inspire", json={"query": "an epic song"})
-    assert r.status_code == 200, r.text
-    b = r.json()
-    assert b["caption"] == "epic" and b["bpm"] == 120 and b["key"] == "C minor"
-
-    s = client.get("/api/music/lm/status")
-    assert s.status_code == 200 and s.json()["downloaded"] is True
-
-
-def test_music_inspire_requires_query(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    r = client.post("/api/music/inspire", json={"query": ""})
-    assert r.status_code == 422
-
-
-def test_inspire_music_clamps(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    svc = client.app.state.synth_service
-    em = client.app.state.engine_manager
-
-    class _StubAce:
-        name = "acestep"
-        def is_loaded(self): return True
-        def load(self): pass
-        def supports_music(self): return True
-        def lm_downloaded(self): return True
-        def inspire(self, query, instrumental, language):
-            return {"caption": "c", "lyrics": "[Instrumental]", "instrumental": False,
-                    "bpm": 999, "duration": 5000.0, "keyscale": "C minor",
-                    "timesignature": "4", "language": "en"}
-    em._engines["acestep"] = _StubAce()
-
-    bp = svc.inspire_music("a song", instrumental=True, language=None)
-    assert bp["bpm"] is None or bp["bpm"] <= 300
-    assert bp["duration_sec"] <= 240
-    assert bp["instrumental"] is True
-    assert bp["key"] == "C minor" and bp["time_signature"] == "4"
-
-
-def test_lm_downloader_targets_checkpoints(tmp_path):
-    from backend.services.lm_download import LmDownloader
-    calls = {}
-    def fake_runner(repo_id, local_dir, progress):
-        calls["repo"] = repo_id
-        calls["dir"] = str(local_dir)
-        progress.log("done")
-    dl = LmDownloader(models_dir=tmp_path, runner=fake_runner)
-    assert dl.status()["state"] == "idle"
-    dl.start()
-    dl._thread.join(timeout=5)
-    assert calls["repo"] == "ACE-Step/acestep-5Hz-lm-0.6B"
-    assert calls["dir"].endswith("acestep-5Hz-lm-0.6B")
-    assert dl.status()["state"] == "done"
-
-
-def test_acestep_lm_downloaded(tmp_path, monkeypatch):
-    import backend.core.engines.ace_step_engine as ace
-    monkeypatch.setattr(ace, "_BACKEND_ROOT", tmp_path)
-    eng = ace.AceStepEngine()
-    assert eng.lm_downloaded() is False
-    d = tmp_path / "models" / "acestep" / "acestep-5Hz-lm-0.6B"
-    d.mkdir(parents=True)
-    (d / "config.json").write_text("{}")
-    assert eng.lm_downloaded() is True
-
-
-def test_acestep_generate_msg_extract():
-    from backend.core.engines.ace_step_engine import AceStepEngine
-    from backend.core.engines import EngineSynthRequest
-    eng = AceStepEngine()
-    req = EngineSynthRequest(text="", voice_id="", caption="drums", task_type="extract",
-                             src_audio="C:/tmp/s.wav", track_name="drums", track_classes="")
-    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
-    assert msg["task_type"] == "extract" and msg["track_name"] == "drums"
-    assert msg["track_classes"] == ""
-
-    from backend.api.schemas import MusicRequestBody
-    b = MusicRequestBody(caption="x", task_type="complete", track_classes=["drums", "bass"])
-    assert b.task_type == "complete" and b.track_classes == ["drums", "bass"]
-
-
-def test_acestep_generate_msg_cover():
-    from backend.core.engines.ace_step_engine import AceStepEngine
-    from backend.core.engines import EngineSynthRequest
-    eng = AceStepEngine()
-    req = EngineSynthRequest(text="", voice_id="", caption="remix", task_type="cover",
-                             src_audio="C:/tmp/src.wav", cover_strength=0.3,
-                             repaint_start=2.0, repaint_end=7.0)
-    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
-    assert msg["task_type"] == "cover" and msg["src_audio"] == "C:/tmp/src.wav"
-    assert msg["cover_strength"] == 0.3 and msg["repaint_start"] == 2.0 and msg["repaint_end"] == 7.0
-
-    from backend.api.schemas import MusicRequestBody
-    b = MusicRequestBody(caption="x", task_type="repaint", src_audio_id="abc", repaint_start=1.0)
-    assert b.task_type == "repaint" and b.src_audio_id == "abc"
-
-
-def test_acestep_generate_msg_thinking():
-    from backend.core.engines.ace_step_engine import AceStepEngine
-    from backend.core.engines import EngineSynthRequest
-    eng = AceStepEngine()
-    req = EngineSynthRequest(text="", voice_id="", caption="jazz", thinking=True)
-    msg = eng._build_generate_msg(req, "C:/tmp/out", 1)
-    assert msg["thinking"] is True
-
-    from backend.api.schemas import MusicRequestBody
-    assert MusicRequestBody(caption="x", thinking=True).thinking is True
-
-
-def test_acestep_build_generate_msg_batch():
-    from backend.core.engines.ace_step_engine import AceStepEngine
-    from backend.core.engines import EngineSynthRequest
-    eng = AceStepEngine()
-    req = EngineSynthRequest(text="", voice_id="", caption="jazz", duration_sec=15.0,
-                             music_steps=8, music_seed=5, bpm=90, keyscale="C major",
-                             timesignature="4", fade_in=1.0, fade_out=2.0)
-    msg = eng._build_generate_msg(req, "C:/tmp/out", 3)
-    assert msg["batch_size"] == 3 and msg["out_dir"] == "C:/tmp/out"
-    assert msg["keyscale"] == "C major" and msg["timesignature"] == "4"
-    assert msg["fade_in"] == 1.0 and msg["fade_out"] == 2.0
-
-
-def test_acestep_capabilities():
-    from backend.core.engines.ace_step_engine import AceStepEngine
-    eng = AceStepEngine()
-    assert eng.supports_music() is True
-    assert eng.supports_voice_cloning() is False
-    assert eng.sample_rate() == 48000
-    assert eng.max_speakers() == 0
-    assert eng.name == "acestep"
-
-
-def test_acestep_registered_and_music_flag(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    r = client.get("/api/engines")
-    assert r.status_code == 200
-    engines = {e["name"]: e for e in r.json()["engines"]}
-    assert "acestep" in engines
-    assert engines["acestep"]["supports_music"] is True
-    # Speech engines report False.
-    assert engines["vibevoice"]["supports_music"] is False
-
-
 def test_music_generate_requires_caption(tmp_path):
     client = _make_client(tmp_path / "v", tmp_path / "u")
     r = client.post("/api/music/generate", json={"caption": ""})
     assert r.status_code == 422
 
 
-def test_music_generate_returns_clips(tmp_path):
+def test_music_generate_returns_clips_via_stub_engine(tmp_path):
+    """The music seam is engine-agnostic: any engine reporting supports_music()
+    and exposing generate_batch() serves /api/music/generate."""
     client = _make_client(tmp_path / "v", tmp_path / "u")
     em = client.app.state.engine_manager
 
-    class _StubAce:
-        name = "acestep"
+    class _StubMusic:
+        name = "stubmusic"
         def is_loaded(self): return True
         def load(self): pass
         def supports_music(self): return True
-        def sample_rate(self): return 48000
+        def sample_rate(self): return 32000
         def generate_batch(self, req, count):
             import numpy as np
             from backend.core.engines import EngineResult, wrap_pcm_as_wav
-            wav = wrap_pcm_as_wav(np.zeros(48000, dtype=np.float32), 48000)
-            return [EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)
-                    for _ in range(count)]
-    em._engines["acestep"] = _StubAce()
+            assert req.caption == "lofi"
+            wav = wrap_pcm_as_wav(np.zeros(32000, dtype=np.float32), 32000)
+            return [EngineResult(wav_bytes=wav, sample_rate=32000, duration_sec=1.0,
+                                 inference_ms=5) for _ in range(count)]
+    em._engines["stubmusic"] = _StubMusic()
 
-    r = client.post("/api/music/generate", json={"caption": "lofi", "count": 2, "key": "C major"})
+    r = client.post("/api/music/generate", json={"caption": "lofi", "count": 2})
     assert r.status_code == 200, r.text
     body = r.json()
     assert len(body["clips"]) == 2
     h = body["clips"][0]["cache_hash"]
-    assert body["clips"][0]["sample_rate"] == 48000
+    assert body["clips"][0]["sample_rate"] == 32000
     assert client.get(f"/api/cache/{h}/audio").status_code == 200
     rf = client.get(f"/api/music/download/{h}?format=flac")
-    assert rf.status_code == 200 and rf.headers["content-type"] == "audio/flac"
-    assert rf.content[:4] == b"fLaC"
+    assert rf.status_code == 200 and rf.content[:4] == b"fLaC"
 
 
-def test_music_upload_and_cover(tmp_path):
-    import io
-    import numpy as np
-    import soundfile as sf
+def test_music_generate_503_without_music_engine(tmp_path):
     client = _make_client(tmp_path / "v", tmp_path / "u")
-    em = client.app.state.engine_manager
-
-    captured = {}
-
-    class _StubAce:
-        name = "acestep"
-        def is_loaded(self): return True
-        def load(self): pass
-        def supports_music(self): return True
-        def sample_rate(self): return 48000
-        def generate_batch(self, req, count):
-            captured["task_type"] = req.task_type
-            captured["src_audio"] = req.src_audio
-            from backend.core.engines import EngineResult, wrap_pcm_as_wav
-            wav = wrap_pcm_as_wav(np.zeros(48000, dtype=np.float32), 48000)
-            return [EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)]
-    em._engines["acestep"] = _StubAce()
-
-    buf = io.BytesIO()
-    sf.write(buf, np.zeros(48000, dtype=np.float32), 48000, format="WAV")
-    buf.seek(0)
-    up = client.post("/api/music/upload", files={"file": ("src.wav", buf.read(), "audio/wav")})
-    assert up.status_code == 201, up.text
-    sid = up.json()["id"]
-    assert up.json()["duration_sec"] > 0.9
-
-    r = client.post("/api/music/generate", json={"caption": "remix", "task_type": "cover",
-                                                 "src_audio_id": sid, "cover_strength": 0.3})
-    assert r.status_code == 200, r.text
-    assert captured["task_type"] == "cover" and captured["src_audio"].endswith(f"{sid}.wav")
-
-
-def test_music_cover_missing_source(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    r = client.post("/api/music/generate", json={"caption": "x", "task_type": "cover"})
-    assert r.status_code == 400
-
-
-def test_music_extract_requires_base(tmp_path):
-    import io
-    import numpy as np
-    import soundfile as sf
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    em = client.app.state.engine_manager
-
-    class _StubAce:
-        name = "acestep"
-        def is_loaded(self): return True
-        def load(self): pass
-        def supports_music(self): return True
-        def sample_rate(self): return 48000
-        def base_downloaded(self): return False
-        def generate_batch(self, req, count): raise AssertionError("should not reach")
-    em._engines["acestep"] = _StubAce()
-
-    buf = io.BytesIO(); sf.write(buf, np.zeros(48000, dtype=np.float32), 48000, format="WAV"); buf.seek(0)
-    sid = client.post("/api/music/upload", files={"file": ("s.wav", buf.read(), "audio/wav")}).json()["id"]
-    r = client.post("/api/music/generate", json={"caption": "x", "task_type": "extract",
-                                                 "src_audio_id": sid, "track_name": "drums"})
-    assert r.status_code == 400
-
-
-def test_music_extract_threads_track(tmp_path):
-    import io
-    import numpy as np
-    import soundfile as sf
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    em = client.app.state.engine_manager
-    captured = {}
-
-    class _StubAce:
-        name = "acestep"
-        def is_loaded(self): return True
-        def load(self): pass
-        def supports_music(self): return True
-        def sample_rate(self): return 48000
-        def base_downloaded(self): return True
-        def generate_batch(self, req, count):
-            captured["task_type"] = req.task_type
-            captured["track_name"] = req.track_name
-            captured["track_classes"] = req.track_classes
-            from backend.core.engines import EngineResult, wrap_pcm_as_wav
-            wav = wrap_pcm_as_wav(np.zeros(48000, dtype=np.float32), 48000)
-            return [EngineResult(wav_bytes=wav, sample_rate=48000, duration_sec=1.0, inference_ms=5)]
-    em._engines["acestep"] = _StubAce()
-
-    buf = io.BytesIO(); sf.write(buf, np.zeros(48000, dtype=np.float32), 48000, format="WAV"); buf.seek(0)
-    sid = client.post("/api/music/upload", files={"file": ("s.wav", buf.read(), "audio/wav")}).json()["id"]
-    r = client.post("/api/music/generate", json={"caption": "full band", "task_type": "complete",
-                                                 "src_audio_id": sid, "track_classes": ["drums", "bass"]})
-    assert r.status_code == 200, r.text
-    assert captured["task_type"] == "complete"
-    assert captured["track_classes"] == "drums,bass"
-
-
-def test_base_downloader_lifecycle(tmp_path):
-    from backend.services.base_model_download import BaseModelDownloader
-    calls = {}
-
-    def fake_runner(repo_id, local_dir, progress):
-        calls["repo"] = repo_id
-        progress.set_total(100)
-        progress.add_bytes(100)
-        progress.log("done")
-    dl = BaseModelDownloader(models_dir=tmp_path, runner=fake_runner)
-    assert dl.status()["state"] == "idle"
-    dl.start()
-    import time as _t
-    for _ in range(50):
-        if dl.status()["state"] in ("done", "error"):
-            break
-        _t.sleep(0.02)
-    s = dl.status()
-    assert s["state"] == "done" and s["percent"] == 100.0
-    assert calls["repo"] == "ACE-Step/acestep-v15-base"
-    assert dl.target_dir() == tmp_path / "acestep" / "acestep-v15-base"
-
-
-def test_base_status_endpoint(tmp_path):
-    client = _make_client(tmp_path / "v", tmp_path / "u")
-    r = client.get("/api/music/base/status")
-    assert r.status_code == 200
-    body = r.json()
-    assert "downloaded" in body and "state" in body
+    r = client.post("/api/music/generate", json={"caption": "lofi"})
+    assert r.status_code == 503, r.text
 
 
 def test_music_request_body_new_fields():

@@ -45,11 +45,6 @@ MODEL_CATALOG: dict[str, dict[str, str]] = {
         "size": "~3.5 GB",
         "label": "Qwen3-TTS CustomVoice",
     },
-    "acestep": {
-        "repo_id": "ACE-Step/Ace-Step1.5",
-        "size": "~6 GB",
-        "label": "ACE-Step 1.5 (Music)",
-    },
 }
 
 

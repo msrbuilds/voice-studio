@@ -5,7 +5,6 @@ import { focusRing } from "@/lib/theme";
 import { ConfirmProvider } from "@/components/ConfirmProvider";
 import { MusicEditor } from "@/components/MusicEditor";
 import { MusicControls } from "@/components/MusicControls";
-import { useLmStatus } from "@/hooks/useLmStatus";
 import { InstallEngineDialog } from "@/components/InstallEngineDialog";
 import { DownloadModelDialog } from "@/components/DownloadModelDialog";
 import { DeleteWeightsDialog } from "@/components/DeleteWeightsDialog";
@@ -153,7 +152,6 @@ export default function App() {
   }, [activeEngine, refreshConfig]);
 
   const pm = useProjectMode();
-  const { status: lmStatus } = useLmStatus();
 
   const [theme, setTheme] = useState<Theme>("dark");
   const [cfgScale, setCfgScale] = useState<number>(1.3);
@@ -267,28 +265,10 @@ export default function App() {
     setToast({ kind: "error", text });
   }, []);
 
-  // Music mode requires the ACE-Step engine. Ready = its venv + core weights
-  // exist; the /api/music endpoint loads it on demand.
-  const aceInfo = engines.find((e) => e.name === "acestep") ?? null;
-  const musicEngineReady = !!aceInfo && aceInfo.installed && aceInfo.downloaded !== false;
-
-  // Entering Music mode: set up ACE-Step. Install → download → activate (which
-  // unloads the current TTS engine, keeping one model in VRAM).
-  useEffect(() => {
-    if (pm.mode !== "music" || !aceInfo) return;
-    if (!aceInfo.installed) {
-      setInstallEngine("acestep");
-      return;
-    }
-    if (aceInfo.downloaded === false) {
-      setDownloadEngine("acestep");
-      return;
-    }
-    if (activeEngine !== "acestep") {
-      void setActiveEngine("acestep").catch((err) => showError(err, "Could not activate ACE-Step"));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pm.mode, aceInfo?.installed, aceInfo?.downloaded, activeEngine]);
+  // Music mode is engine-agnostic: it lights up when any registered engine
+  // reports the supports_music capability. None today — the editor renders an
+  // empty state and /api/music/generate returns 503.
+  const musicEngineReady = engines.some((e) => e.supports_music);
 
   // Filter the global voice catalog down to the active engine. The
   // sidebar shouldn't offer Kokoro's voices when VibeVoice is active
@@ -844,7 +824,6 @@ export default function App() {
           config={config}
           buffer={pm.music}
           onChange={pm.setMusic}
-          lmReady={!!lmStatus?.downloaded}
         />
       ) : (
         <VoiceLibrary
