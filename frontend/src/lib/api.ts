@@ -1,6 +1,8 @@
 // Typed wrappers for the backend's REST API.
 
 import type {
+  AsrStatus,
+  AsrTranscribeResponse,
   ConfigResponse,
   DeleteWeightsStatus,
   DownloadStatus,
@@ -62,6 +64,42 @@ export async function getConfig(): Promise<ConfigResponse> {
 
 export async function getSystemStats(): Promise<SystemStats> {
   return jsonOrThrow<SystemStats>(await fetch(`${API_BASE}/system/stats`));
+}
+
+// ---- ASR (speech-to-text) ----
+
+export async function getAsrStatus(): Promise<AsrStatus> {
+  return jsonOrThrow<AsrStatus>(await fetch(`${API_BASE}/asr/status`));
+}
+
+export interface TranscribeArgs {
+  /** Exactly one of `file` / `cacheHash`. */
+  file?: File;
+  cacheHash?: string;
+  language?: string | null; // null/undefined => auto-detect
+  timestamps?: boolean;
+}
+
+export async function transcribe(args: TranscribeArgs): Promise<AsrTranscribeResponse> {
+  const form = new FormData();
+  if (args.file) form.append("file", args.file);
+  if (args.cacheHash) form.append("cache_hash", args.cacheHash);
+  if (args.language) form.append("language", args.language);
+  form.append("timestamps", String(!!args.timestamps));
+
+  const res = await fetch(`${API_BASE}/asr/transcribe`, { method: "POST", body: form });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const b = (await res.json()) as { detail?: string | { msg?: string }[] };
+      if (typeof b.detail === "string") detail = b.detail;
+      else if (Array.isArray(b.detail) && b.detail[0]?.msg) detail = b.detail[0].msg!;
+    } catch {
+      /* keep statusText */
+    }
+    throw new ApiError(detail, res.status);
+  }
+  return (await res.json()) as AsrTranscribeResponse;
 }
 
 export interface CacheEntryInfo {

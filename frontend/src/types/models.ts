@@ -7,7 +7,40 @@ export interface EngineLanguage {
   label: string;
 }
 
-export type ProjectMode = "tts" | "podcast";
+export type ProjectMode = "tts" | "podcast" | "transcribe";
+
+export interface AsrSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface TranscribeBuffer {
+  fileName: string;
+  text: string;
+  /** null = auto-detect. Otherwise a Whisper language code, e.g. "ur". */
+  language: string | null;
+  timestamps: boolean;
+  segments: AsrSegment[];
+  detectedLanguage: string;
+}
+
+export interface AsrStatus {
+  model_id: string;
+  loaded: boolean;
+  downloaded: boolean;
+  languages: EngineLanguage[];
+}
+
+export interface AsrTranscribeResponse {
+  text: string;
+  language: string;
+  duration_sec: number;
+  inference_ms: number;
+  cache_hash: string;
+  cache_hit: boolean;
+  segments: AsrSegment[];
+}
 
 export interface TtsBuffer {
   text: string;

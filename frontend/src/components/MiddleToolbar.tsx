@@ -98,7 +98,8 @@ export function MiddleToolbar({
           onImportJson={onImportJson}
         />
 
-        {mode !== null && (
+        {/* Transcribe mode has no sample scripts — its input is an audio file. */}
+        {(mode === "podcast" || mode === "tts") && (
           <SampleMenu
             isDark={isDark}
             mode={mode}
