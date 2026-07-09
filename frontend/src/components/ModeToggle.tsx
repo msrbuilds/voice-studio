@@ -18,5 +18,5 @@ export function ModeToggle({ isDark, mode, onChange }: Props) {
       {label}
     </button>
   );
-  return <div className={`inline-flex gap-1 p-1 rounded-lg ${wrap}`}>{seg("tts", "Text-to-Voice")}{seg("podcast", "Podcast")}{seg("music", "Music")}</div>;
+  return <div className={`inline-flex gap-1 p-1 rounded-lg ${wrap}`}>{seg("tts", "Text-to-Voice")}{seg("podcast", "Podcast")}</div>;
 }
