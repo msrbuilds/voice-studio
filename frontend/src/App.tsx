@@ -24,7 +24,8 @@ import { useVoices } from "@/hooks/useVoices";
 import { useEngine } from "@/hooks/useEngine";
 import { useProjectMode } from "@/hooks/useProjectMode";
 import { useAsrStatus } from "@/hooks/useAsrStatus";
-import { ApiError, downloadPodcast, synthesizeWav, updateVoiceMeta } from "@/lib/api";
+import { ApiError, downloadPodcast, synthesizeWav, transcribe, updateVoiceMeta } from "@/lib/api";
+import { segmentsToSrt } from "@/lib/subtitles";
 import {
   AudioPlayer,
   wavToPcm16,
@@ -667,11 +668,14 @@ export default function App() {
 
   // ---- export audio ----
 
-  const handleExportAudio = useCallback(async () => {
+  // Shared by the WAV export and the subtitle export: both need the same
+  // per-segment request list. Returns null (after surfacing an error) when the
+  // project isn't exportable.
+  const buildPodcastPayload = useCallback(() => {
     const valid = project.segments.filter((s) => s.text.trim());
     if (valid.length === 0) {
       showError("No segments with text", "Nothing to export");
-      return;
+      return null;
     }
     const payload: {
       text: string;
@@ -699,7 +703,7 @@ export default function App() {
           `Segment has no speaker assigned (text: "${seg.text.slice(0, 40)}…").`,
           "Missing speaker",
         );
-        return;
+        return null;
       }
       const mode = isOmni ? effectiveMode(speaker) : "clone";
       if (mode === "clone" && !speaker.voice) {
@@ -707,7 +711,7 @@ export default function App() {
           `Segment has no voice assigned (text: "${seg.text.slice(0, 40)}…").`,
           "Missing voice",
         );
-        return;
+        return null;
       }
       const instruct =
         mode === "design" || mode === "clone"
@@ -738,6 +742,12 @@ export default function App() {
         } : {}),
       });
     }
+    return payload;
+  }, [project, showError, cfgScale, exaggeration, activeEngine, supportsVoiceModes, quality, qwenParams]);
+
+  const handleExportAudio = useCallback(async () => {
+    const payload = buildPodcastPayload();
+    if (!payload) return;
 
     setIsExporting(true);
     setStopExport(false);
@@ -764,7 +774,52 @@ export default function App() {
       setIsExporting(false);
       setExportProgress("");
     }
-  }, [project, showError, cfgScale, exaggeration, activeEngine, supportsVoiceModes, quality, qwenParams]);
+  }, [buildPodcastPayload, showError, stopExport]);
+
+  // Subtitles for generated audio: transcribe the rendered WAV (the joined
+  // podcast, or the single TTS take) and format the segments as SubRip.
+  const handleExportSubtitles = useCallback(async () => {
+    setIsExporting(true);
+    setExportProgress("Preparing audio…");
+    try {
+      let wav: ArrayBuffer;
+      if (pm.mode === "tts") {
+        const cached = project.audioCache[TTS_SEG_ID];
+        if (!cached) {
+          showError("Generate the audio first", "Nothing to transcribe");
+          return;
+        }
+        wav = cached.audioData;
+      } else {
+        const payload = buildPodcastPayload();
+        if (!payload) return;
+        setExportProgress("Rendering podcast…");
+        wav = (await downloadPodcast(payload, 150)).audioData;
+      }
+
+      setExportProgress("Transcribing…");
+      const file = new File([wav], "audio.wav", { type: "audio/wav" });
+      const res = await transcribe({ file, timestamps: true });
+      if (res.segments.length === 0) {
+        showError("Whisper returned no timestamped segments", "No subtitles");
+        return;
+      }
+
+      const blob = new Blob([segmentsToSrt(res.segments)], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `voice-studio-${Date.now()}.srt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportProgress("Done");
+    } catch (err) {
+      showError(err, "Subtitle export failed");
+    } finally {
+      setIsExporting(false);
+      setExportProgress("");
+    }
+  }, [pm.mode, project.audioCache, buildPodcastPayload, showError]);
 
   const viewportWidth = useViewportWidth();
 
@@ -857,6 +912,10 @@ export default function App() {
           onImportJson={handleImportJson}
           onLoadPodcastSample={handleLoadSample}
           onLoadTtsSample={handleLoadTtsSample}
+          onExportSubtitles={() => void handleExportSubtitles()}
+          subtitlesDisabled={
+            pm.mode === "tts" ? !project.audioCache[TTS_SEG_ID] : cachedCount === 0
+          }
         />
 
         {pm.mode === null ? (

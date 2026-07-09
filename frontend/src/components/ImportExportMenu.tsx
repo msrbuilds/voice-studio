@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, FileDown, FileUp, Upload } from "lucide-react";
+import { Captions, Download, FileDown, FileUp, Upload } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 
 interface Props {
@@ -7,9 +7,20 @@ interface Props {
   busy: boolean;
   onExportJson: () => void;
   onImportJson: (file: File) => void;
+  /** Transcribe the generated audio and download it as .srt. Omitted when the
+   *  current mode has no rendered audio to subtitle. */
+  onExportSubtitles?: () => void;
+  subtitlesDisabled?: boolean;
 }
 
-export function ImportExportMenu({ isDark, busy, onExportJson, onImportJson }: Props) {
+export function ImportExportMenu({
+  isDark,
+  busy,
+  onExportJson,
+  onImportJson,
+  onExportSubtitles,
+  subtitlesDisabled,
+}: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -81,6 +92,26 @@ export function ImportExportMenu({ isDark, busy, onExportJson, onImportJson }: P
               className="hidden"
             />
           </label>
+
+          {onExportSubtitles && (
+            <button
+              type="button"
+              onClick={() => {
+                onExportSubtitles();
+                setOpen(false);
+              }}
+              disabled={busy || subtitlesDisabled}
+              title={
+                subtitlesDisabled
+                  ? "Generate the audio first"
+                  : "Transcribe the generated audio into SubRip subtitles"
+              }
+              className={`${menuItemClass} ${subtitlesDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              <Captions className="w-4 h-4 text-orange-400" />
+              <span>Subtitles (.srt)</span>
+            </button>
+          )}
 
           <div
             className={`mt-1 pt-1 border-t px-3 py-2 text-[11px] ${
