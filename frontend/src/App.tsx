@@ -13,6 +13,8 @@ import { SpeakerRoster } from "@/components/SpeakerRoster";
 import { HardwareStatusBar } from "@/components/HardwareStatusBar";
 import { MiddleToolbar } from "@/components/MiddleToolbar";
 import { ModeChooser } from "@/components/ModeChooser";
+import { TranscribeControls } from "@/components/TranscribeControls";
+import { TranscribeEditor } from "@/components/TranscribeEditor";
 import { TtsEditor } from "@/components/TtsEditor";
 import { InlinePlayer } from "@/components/InlinePlayer";
 import { BrandFooter } from "@/components/BrandFooter";
@@ -21,6 +23,7 @@ import { useConfig } from "@/hooks/useConfig";
 import { useVoices } from "@/hooks/useVoices";
 import { useEngine } from "@/hooks/useEngine";
 import { useProjectMode } from "@/hooks/useProjectMode";
+import { useAsrStatus } from "@/hooks/useAsrStatus";
 import { ApiError, downloadPodcast, synthesizeWav, updateVoiceMeta } from "@/lib/api";
 import {
   AudioPlayer,
@@ -201,6 +204,9 @@ export default function App() {
   const [toast, setToast] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const [installEngine, setInstallEngine] = useState<string | null>(null);
   const [downloadEngine, setDownloadEngine] = useState<string | null>(null);
+  // Whisper's status. Fetched up-front so the Transcribe language picker is
+  // populated before the weights lazily load on first transcription.
+  const { status: asrStatus, refresh: refreshAsrStatus } = useAsrStatus();
   const [deleteWeightsEngine, setDeleteWeightsEngine] = useState<string | null>(null);
   const [uninstallEngine, setUninstallEngine] = useState<string | null>(null);
 
@@ -810,18 +816,29 @@ export default function App() {
   return (
     <ConfirmProvider isDark={isDark}>
     <div className={`flex h-screen overflow-hidden ${isDark ? "bg-zinc-950" : "bg-gray-50"}`}>
-      <VoiceLibrary
-        voices={displayedVoices}
-        config={config}
-        theme={theme}
-        onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-        onUploadVoice={uploadVoice}
-        onRemoveVoice={removeVoice}
-        onUpdateVoiceMeta={handleUpdateVoiceMeta}
-        supportsVoiceCloning={supportsVoiceCloning}
-        selectedVoiceId={pm.mode === "tts" ? pm.tts.voiceId : undefined}
-        onSelectVoice={pm.mode === "tts" ? pm.setTtsVoice : undefined}
-      />
+      {pm.mode === "transcribe" ? (
+        <TranscribeControls
+          theme={theme}
+          onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          config={config}
+          asr={asrStatus}
+          buffer={pm.transcribe}
+          onChange={pm.setTranscribe}
+        />
+      ) : (
+        <VoiceLibrary
+          voices={displayedVoices}
+          config={config}
+          theme={theme}
+          onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          onUploadVoice={uploadVoice}
+          onRemoveVoice={removeVoice}
+          onUpdateVoiceMeta={handleUpdateVoiceMeta}
+          supportsVoiceCloning={supportsVoiceCloning}
+          selectedVoiceId={pm.mode === "tts" ? pm.tts.voiceId : undefined}
+          onSelectVoice={pm.mode === "tts" ? pm.setTtsVoice : undefined}
+        />
+      )}
 
       {/* MIDDLE column: sticky toolbar, scroll body, sticky player */}
       <main className="flex-1 flex flex-col min-w-0 @container">
@@ -844,6 +861,18 @@ export default function App() {
 
         {pm.mode === null ? (
           <ModeChooser isDark={isDark} onPick={pm.setMode} />
+        ) : pm.mode === "transcribe" ? (
+          <TranscribeEditor
+            isDark={isDark}
+            buffer={pm.transcribe}
+            onChange={pm.setTranscribe}
+            asr={asrStatus}
+            onDownloadWeights={() => setDownloadEngine("whisper")}
+            onSendToTts={(text) => {
+              pm.setTtsText(text);
+              pm.setMode("tts");
+            }}
+          />
         ) : pm.mode === "tts" ? (
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {toast && (
@@ -1040,11 +1069,19 @@ export default function App() {
           engineName={downloadEngine}
           displayName={
             engines.find((e) => e.name === downloadEngine)?.display_name ??
-            downloadEngine
+            (downloadEngine === "whisper" ? "Whisper large-v3-turbo (ASR)" : downloadEngine)
           }
           onClose={() => setDownloadEngine(null)}
           onDone={async () => {
             const name = downloadEngine;
+            // Whisper is ASR, not a TTS engine: it isn't in the engine registry,
+            // so activating/loading it as one would fail. Just refresh its status
+            // to clear the Transcribe download gate.
+            if (name === "whisper") {
+              await refreshAsrStatus();
+              setDownloadEngine(null);
+              return;
+            }
             await refreshEngines();
             try {
               await setActiveEngine(name);
