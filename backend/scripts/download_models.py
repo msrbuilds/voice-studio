@@ -86,6 +86,20 @@ def download_models(keys: list[str], models_dir: Path | str | None = None) -> No
         print(f"[models] {spec['label']} ready.", flush=True)
 
 
+def list_catalog() -> list[dict[str, str]]:
+    """The catalog as ordered, JSON-serializable rows.
+
+    `studio.py` is stdlib-only and cannot import this module (it runs before the
+    venv exists), so its model picker shells out to `--list` rather than keeping
+    a hand-mirrored copy of the catalog — which is exactly what silently rotted
+    when OmniVoice/VoxCPM/Qwen/Whisper were added.
+    """
+    return [
+        {"key": key, "label": entry["label"], "size": entry["size"]}
+        for key, entry in MODEL_CATALOG.items()
+    ]
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(
         prog="download_models",
@@ -93,11 +107,23 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument(
         "--models",
-        required=True,
         help="comma-separated engine keys: " + ", ".join(MODEL_CATALOG),
     )
     p.add_argument("--models-dir", default=None, help="HF cache dir (default: backend/models)")
+    p.add_argument(
+        "--list",
+        action="store_true",
+        help="print the catalog as JSON and exit (used by studio.py's picker)",
+    )
     args = p.parse_args(argv)
+
+    if args.list:
+        import json
+
+        print(json.dumps(list_catalog()))
+        return
+    if not args.models:
+        p.error("--models is required (or pass --list)")
     download_models(parse_model_selection(args.models), args.models_dir)
 
 

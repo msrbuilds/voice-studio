@@ -13,6 +13,7 @@ Stdlib only: this runs on a bare system Python before the venv exists.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import shutil
@@ -775,17 +776,43 @@ def _check_system_deps() -> None:
         print(f"  NOTE: ffmpeg not found (some audio I/O). Install: {ff}")
 
 
+#: Last-resort menu if the venv can't report the catalog. Deliberately short —
+#: the real list comes from `download_models --list`.
+_FALLBACK_CATALOG = [
+    ("vibevoice", "VibeVoice-1.5B", "~5.4 GB"),
+    ("kokoro", "Kokoro-82M", "~350 MB"),
+    ("chatterbox", "Chatterbox V3", "~500 MB"),
+]
+
+
+def _load_catalog(py: Path) -> list[tuple[str, str, str]]:
+    """Ask the venv for the real model catalog.
+
+    studio.py is stdlib-only and can't import backend code, so it shells out.
+    It used to keep a hand-mirrored copy of the catalog, which silently rotted:
+    OmniVoice, VoxCPM, Qwen and Whisper were never offered by the picker.
+    """
+    try:
+        out = subprocess.run(
+            [str(py), "-m", "backend.scripts.download_models", "--list"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=180,
+        )
+        if out.returncode != 0 or not out.stdout.strip():
+            raise RuntimeError((out.stderr or "").strip()[:200] or "no output")
+        # The venv's imports may print warnings; the JSON is the last line.
+        rows = json.loads(out.stdout.strip().splitlines()[-1])
+        return [(r["key"], r["label"], r["size"]) for r in rows]
+    except Exception as exc:  # noqa: BLE001 — never block setup on this
+        print(f"  NOTE: could not read the model catalog ({exc}); showing a short list.")
+        return _FALLBACK_CATALOG
+
+
 def _interactive_model_picker(py: Path) -> None:
-    # Import the catalog via the venv is overkill; mirror keys here for the
-    # prompt, and let download_models validate.
-    catalog = [
-        ("vibevoice", "VibeVoice-1.5B", "~5.4 GB"),
-        ("kokoro", "Kokoro-82M", "~350 MB"),
-        ("chatterbox", "Chatterbox V3", "~500 MB"),
-    ]
+    catalog = _load_catalog(py)
     print("  Select models to download now (others download lazily on first use):")
+    width = max(len(label) for _k, label, _s in catalog)
     for i, (_key, label, size) in enumerate(catalog, 1):
-        print(f"    {i}) {label:<16} {size}")
+        print(f"    {i}) {label:<{width}}  {size}")
     print("  Enter numbers separated by commas (e.g. 2,3), or blank to skip.")
     raw = input("  > ").strip()
     if not raw:
@@ -795,12 +822,20 @@ def _interactive_model_picker(py: Path) -> None:
     for tok in raw.split(","):
         tok = tok.strip()
         if tok.isdigit() and 1 <= int(tok) <= len(catalog):
-            picked.append(catalog[int(tok) - 1][0])
+            key = catalog[int(tok) - 1][0]
+            if key not in picked:
+                picked.append(key)
     if not picked:
         print("  Nothing valid selected — skipping.")
         return
     _run([str(py), "-m", "backend.scripts.download_models",
           "--models", ",".join(picked)], cwd=REPO_ROOT)
+    # OmniVoice / VoxCPM / Qwen weights share the HF cache, but each engine also
+    # needs its own venv — built on demand from the UI or `install-<engine>`.
+    for key in ("omnivoice", "voxcpm", "qwen"):
+        if key in picked:
+            print(f"  {key}: weights fetched. Run 'python studio.py install-{key}' "
+                  "(or use the in-app installer) to build its environment.")
     if "chatterbox" in picked:
         print("  Chatterbox selected — setting up its isolated environment …")
         _ensure_chatterbox_env()
