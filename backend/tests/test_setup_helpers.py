@@ -170,6 +170,30 @@ def test_catalog_has_expected_engines():
     assert dm.MODEL_CATALOG["omnivoice"]["repo_id"] == "k2-fsa/OmniVoice"
 
 
+def test_catalog_entries_are_complete():
+    """Every entry needs the three fields `--list` (and the picker) render."""
+    for key, entry in dm.MODEL_CATALOG.items():
+        assert entry["repo_id"], key
+        assert entry["label"], key
+        assert entry["size"], key
+
+
+def test_list_catalog_emits_every_entry_in_order():
+    """studio.py's picker builds its menu from this, instead of a hand-mirrored
+    copy that silently rots when an engine is added."""
+    rows = dm.list_catalog()
+    assert [r["key"] for r in rows] == list(dm.MODEL_CATALOG)
+    assert {"key", "label", "size"} <= set(rows[0])
+    assert any(r["key"] == "whisper" for r in rows)
+
+
+def test_list_catalog_is_json_serializable():
+    import json
+
+    parsed = json.loads(json.dumps(dm.list_catalog()))
+    assert parsed[0]["key"] == "vibevoice"
+
+
 def test_mount_frontend_serves_index_when_dist_present(tmp_path):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
