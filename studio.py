@@ -23,6 +23,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Force UTF-8 on our own stdout/stderr. Windows' console defaults to a legacy
+# code page (cp1252), which raises UnicodeEncodeError the moment we print a
+# non-ASCII character — this script uses arrows/dashes throughout, so a fresh
+# `python studio.py setup` would crash at the first such line. reconfigure()
+# exists on Python 3.7+ (we require 3.10+); errors="replace" keeps output going
+# even on a console that still can't render a glyph.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # pragma: no cover - non-reconfigurable stream
+        pass
+
 REPO_ROOT = Path(__file__).resolve().parent
 BACKEND_DIR = REPO_ROOT / "backend"
 FRONTEND_DIR = REPO_ROOT / "frontend"
