@@ -392,12 +392,37 @@ class SynthService:
         joined_pcm = _concat_pcm(pcm_chunks, 150, target_sr)
         total_duration += 0.150 * (len(pcm_chunks) - 1)
         joined_wav = _pcm16_to_wav(joined_pcm, target_sr)
+
+        # A single-voice script that merely spans several lines lands here too,
+        # because _build_script gives every line its own `Speaker 1:` tag. Its
+        # audio is still a pure function of (text, voice, knobs) — exactly what
+        # content_hash covers — so the join is safe to cache. Without this, any
+        # multi-line Text-to-Voice generation was uncacheable: absent from
+        # "Recent generations" and impossible to download.
+        #
+        # Genuine multi-speaker joins stay uncached: content_hash only folds
+        # speakers[0], so it would not identify them.
+        join_hash = content_hash if len(req.speakers) <= 1 else None
+        if join_hash and self._cache is not None and self._cache.enabled:
+            try:
+                self._cache.put(
+                    content_hash=join_hash,
+                    wav_bytes=joined_wav,
+                    sample_rate=target_sr,
+                    duration_sec=total_duration,
+                    inference_ms=total_inference_ms,
+                    text=req.text,
+                    voice=req.speakers[0].voice_id,
+                )
+            except Exception as exc:  # noqa: BLE001 — caching is best-effort
+                log.debug("Failed to write cache entry %s: %s", join_hash, exc)
+
         return SynthResult(
             wav_bytes=joined_wav,
             sample_rate=target_sr,
             duration_sec=total_duration,
             inference_ms=total_inference_ms,
-            cache_hash=None,
+            cache_hash=join_hash,
             cache_hit=False,
             engine=target_name,
         )

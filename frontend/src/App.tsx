@@ -587,6 +587,23 @@ export default function App() {
     finally { setGeneratingId(null); }
   }, [pm.tts, displayedVoices, activeEngine, cfgScale, exaggeration, isSynthLangEngine, project, showError, quality, qwenParams]);
 
+  // Save the take the browser already holds. Deliberately does NOT go through
+  // the server cache: the audio is in hand after generate, so Download works
+  // even if the request missed the cache.
+  const downloadTts = useCallback(() => {
+    const cached = project.audioCache[TTS_SEG_ID];
+    if (!cached) {
+      showError("Generate the audio first", "Nothing to download");
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([cached.audioData], { type: "audio/wav" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `voice-studio-${Date.now()}.wav`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [project.audioCache, showError]);
+
   const playTts = useCallback(async () => {
     // Toggle: if the TTS clip is already playing, this acts as Stop.
     if (playingId === TTS_SEG_ID) {
@@ -969,8 +986,10 @@ export default function App() {
               busy={busy}
               isGenerating={generatingId === TTS_SEG_ID}
               isPlaying={playingId === TTS_SEG_ID}
+              hasAudio={!!project.audioCache[TTS_SEG_ID]}
               onGenerate={() => void generateTts()}
               onPlay={() => void playTts()}
+              onDownload={downloadTts}
             />
           </div>
         ) : (

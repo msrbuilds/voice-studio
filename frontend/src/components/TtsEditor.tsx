@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Loader2, Play, RefreshCw, Square } from "lucide-react";
+import { Download, Loader2, Play, RefreshCw, Square } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 import type { EngineLanguage, Voice } from "@/types/models";
 import { textStats, fmtDuration, isRtlText, textDirection } from "@/lib/textStats";
@@ -28,15 +28,19 @@ interface Props {
   busy: boolean;
   isGenerating: boolean;
   isPlaying: boolean;
+  /** True once a take exists for the current buffer. Gates Download. */
+  hasAudio: boolean;
   onGenerate: () => void;
   onPlay: () => void;
+  onDownload: () => void;
 }
 
 export function TtsEditor(props: Props) {
   const {
     isDark, text, onTextChange, activeVoice, languages, showLanguage,
     language, onLanguageChange, supportsVoiceModes, supportsStyleClone, supportsStylePrompt = false, activeEngine, omniMode, onOmniModeChange,
-    voiceDesign, onVoiceDesignChange, busy, isGenerating, isPlaying, onGenerate, onPlay,
+    voiceDesign, onVoiceDesignChange, busy, isGenerating, isPlaying, hasAudio,
+    onGenerate, onPlay, onDownload,
   } = props;
   const stats = textStats(text);
   const inputBg = isDark ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-200 text-gray-900";
@@ -230,6 +234,14 @@ export function TtsEditor(props: Props) {
                 ? "bg-orange-600 hover:bg-orange-500 text-white"
                 : isDark ? "bg-zinc-800 hover:bg-zinc-700 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"} ${focusRing}`}>
             {isPlaying ? <><Square className="w-4 h-4" /> Stop</> : <><Play className="w-4 h-4" /> Play</>}
+          </button>
+          {/* Saves the take the browser already holds — no server round-trip, so
+              it works even when the synthesis wasn't cached server-side. */}
+          <button type="button" onClick={onDownload} disabled={!hasAudio}
+            title={hasAudio ? "Download this take as WAV" : "Generate the audio first"}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              isDark ? "bg-zinc-800 hover:bg-zinc-700 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"} ${focusRing}`}>
+            <Download className="w-4 h-4" /> Download
           </button>
         </div>
       </div>
