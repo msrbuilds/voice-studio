@@ -136,6 +136,11 @@ export function TranscribeControls({
           </div>
         </section>
 
+      </div>
+
+      {/* Footer — appearance + backend info, pinned to the bottom of the
+          sidebar. Mirrors VoiceLibrary so the two columns line up. */}
+      <div className={`p-4 border-t space-y-4 shrink-0 ${border}`}>
         <section>
           <h2 className={`text-xs font-semibold uppercase tracking-wide mb-2 ${heading}`}>
             Appearance
