@@ -26,7 +26,12 @@ export interface TranscribeBuffer {
 }
 
 export interface AsrStatus {
+  name: string;
   model_id: string;
+  display_name: string;
+  description: string;
+  license: string;
+  model_url: string;
   loaded: boolean;
   downloaded: boolean;
   languages: EngineLanguage[];

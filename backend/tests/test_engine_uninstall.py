@@ -55,6 +55,62 @@ def test_model_deleter_deletes_existing_dir(tmp_path):
     assert s["error"] is None
 
 
+def test_whisper_weights_are_deletable(tmp_path):
+    """Whisper's 1.6 GB must be reclaimable. It isn't a TTS engine, so it is
+    absent from EngineManager — the deleter must still find and unload it."""
+    from backend.services.model_delete import DELETABLE, ModelDeleter
+
+    assert "whisper" in DELETABLE
+
+    target = tmp_path / "models--openai--whisper-large-v3-turbo"
+    target.mkdir()
+    removed = []
+
+    class _LoadedWhisper:
+        name = "whisper"
+        unloaded = False
+        def is_loaded(self): return not self.unloaded
+        def unload(self): self.unloaded = True
+
+    class _Asr:
+        def __init__(self, e): self.engine = e
+
+    whisper = _LoadedWhisper()
+    d = ModelDeleter(
+        em=None,
+        asr_service=_Asr(whisper),
+        repo_dir_resolver=lambda repo_id: target,
+        remover=lambda p: removed.append(p),
+    )
+    d.start("whisper")
+    _wait_deleter(d)
+    s = d.status()
+    assert s["state"] == "deleted", s
+    assert s["error"] is None
+    assert removed == [target]
+    # Windows can't rmtree files a loaded model still holds open.
+    assert whisper.unloaded is True, "whisper was not unloaded before deletion"
+
+
+def test_deleter_tolerates_unknown_engine_in_registry(em_absent=True):
+    """A name absent from EngineManager must not blow up the unload step."""
+    from backend.services.model_delete import ModelDeleter
+
+    class _EmMissing:
+        def get_engine(self, name):
+            raise KeyError(name)
+
+    removed = []
+    d = ModelDeleter(
+        em=_EmMissing(),
+        repo_dir_resolver=lambda repo_id: None,
+        remover=lambda p: removed.append(p),
+    )
+    d.start("whisper")
+    _wait_deleter(d)
+    assert d.status()["state"] == "deleted", d.status()
+
+
 def test_model_deleter_missing_dir_is_idempotent():
     from backend.services.model_delete import ModelDeleter
     removed = []

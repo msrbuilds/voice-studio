@@ -1098,6 +1098,7 @@ export default function App() {
       <ControlPanel
         isDark={isDark}
         engines={engines}
+        asr={asrStatus}
         activeEngine={activeEngine}
         onSelectEngine={async (name) => {
           try {
@@ -1177,11 +1178,15 @@ export default function App() {
           engineName={deleteWeightsEngine}
           displayName={
             engines.find((e) => e.name === deleteWeightsEngine)?.display_name ??
+            (deleteWeightsEngine === "whisper" ? asrStatus?.display_name : null) ??
             deleteWeightsEngine
           }
           onClose={() => setDeleteWeightsEngine(null)}
           onDone={async () => {
-            await refreshEngines();
+            // Whisper is ASR, not a registered engine: refresh its own status
+            // so the popup flips back to "Download" and Transcribe re-gates.
+            if (deleteWeightsEngine === "whisper") await refreshAsrStatus();
+            else await refreshEngines();
             setDeleteWeightsEngine(null);
           }}
         />

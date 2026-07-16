@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { AudioWaveform, Binary, Cpu } from "lucide-react";
 import type { AsrStatus, ConfigResponse, TranscribeBuffer } from "@/types/models";
 import { ThemeToggle } from "./ThemeToggle";
+import { SidebarHeader, SidebarStrip } from "./SidebarHeader";
 import { focusRing } from "@/lib/theme";
+import { defaultVoiceLibraryOpen } from "@/lib/layout";
 
 interface Props {
   theme: "light" | "dark";
@@ -23,6 +26,28 @@ export function TranscribeControls({
   onChange,
 }: Props) {
   const isDark = theme === "dark";
+
+  // Mirrors VoiceLibrary: collapsible, remembered across sessions, defaulting
+  // by viewport width on first run.
+  const LS_KEY = "vs.transcribeControls.open";
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(LS_KEY);
+      if (stored !== null) return stored === "true";
+    } catch {
+      /* ignore */
+    }
+    return typeof window !== "undefined" ? defaultVoiceLibraryOpen(window.innerWidth) : true;
+  });
+  const setOpenPersisted = (next: boolean) => {
+    setOpen(next);
+    try {
+      localStorage.setItem(LS_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  };
+
   const surface = isDark ? "bg-zinc-950" : "bg-white";
   const border = isDark ? "border-zinc-800" : "border-gray-200";
   const heading = isDark ? "text-zinc-400" : "text-gray-600";
@@ -33,20 +58,25 @@ export function TranscribeControls({
     ? "bg-zinc-900 border-zinc-800 text-white"
     : "bg-white border-gray-200 text-gray-900";
 
+  if (!open) {
+    return (
+      <SidebarStrip
+        isDark={isDark}
+        onOpen={() => setOpenPersisted(true)}
+        openTitle="Open transcription controls"
+        onThemeToggle={onThemeToggle}
+      />
+    );
+  }
+
   return (
     <aside className={`w-64 shrink-0 z-10 border-r flex flex-col transition-colors ${surface} ${border}`}>
-      <div className={`p-3 xxl:p-4 border-b flex items-center gap-3 ${border}`}>
-        <img
-          src={isDark ? "/logo-dark-sm.png" : "/logo-light-sm.png"}
-          alt="Voice Studio logo"
-          width={36}
-          height={36}
-          className="w-9 h-9 rounded-lg shrink-0"
-        />
-        <h1 className={`font-semibold text-sm truncate ${isDark ? "text-white" : "text-gray-900"}`}>
-          Voice Studio by MSR
-        </h1>
-      </div>
+      <SidebarHeader
+        isDark={isDark}
+        version={config?.version}
+        onCollapse={() => setOpenPersisted(false)}
+        collapseTitle="Collapse transcription controls"
+      />
 
       <div className="flex-1 overflow-y-auto p-2.5 space-y-4">
         <section className="p-3 dark:bg-zinc-900 dark:border-zinc-800 bg-gray-100/80 border border-gray-200 rounded-lg space-y-4">

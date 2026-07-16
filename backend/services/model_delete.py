@@ -16,10 +16,14 @@ from typing import Callable, Optional
 
 from backend.scripts.download_models import MODEL_CATALOG
 
-#: Every engine has weights in the shared HF cache and can have them deleted.
+#: Every model with weights in the shared HF cache can have them deleted.
 #: (Superset of model_download.DOWNLOADABLE — chatterbox's weights arrive via
-#: its worker's install but still land in the shared cache.)
-DELETABLE: frozenset[str] = frozenset({"vibevoice", "kokoro", "omnivoice", "chatterbox", "voxcpm", "qwen"})
+#: its worker's install but still land in the shared cache.) "whisper" is ASR,
+#: not a TTS engine, so it lives in AsrService rather than EngineManager — but
+#: its 1.6 GB is reclaimable like any other.
+DELETABLE: frozenset[str] = frozenset(
+    {"vibevoice", "kokoro", "omnivoice", "chatterbox", "voxcpm", "qwen", "whisper"}
+)
 
 _MAX_LOG_LINES = 500
 
@@ -53,10 +57,12 @@ class ModelDeleter:
         self,
         *,
         em=None,
+        asr_service=None,
         repo_dir_resolver: RepoDirResolver | None = None,
         remover: Remover | None = None,
     ) -> None:
         self._em = em
+        self._asr = asr_service
         self._resolve = repo_dir_resolver or _default_repo_dir
         self._remove = remover or shutil.rmtree
         self._lock = threading.Lock()
@@ -92,14 +98,31 @@ class ModelDeleter:
             if len(self._log) > _MAX_LOG_LINES:
                 del self._log[: len(self._log) - _MAX_LOG_LINES]
 
+    def _live_engine(self, engine_name: str):
+        """The loaded model object for `engine_name`, or None.
+
+        Checks the ASR service first (Whisper is deliberately absent from
+        EngineManager), then the TTS registry. Returns None for anything
+        neither owns, so an unknown name skips the unload instead of raising.
+        """
+        asr_engine = getattr(self._asr, "engine", None)
+        if asr_engine is not None and getattr(asr_engine, "name", None) == engine_name:
+            return asr_engine
+        if self._em is not None:
+            try:
+                return self._em.get_engine(engine_name)
+            except Exception:  # noqa: BLE001 — not a registered TTS engine
+                return None
+        return None
+
     def _run(self, engine_name: str) -> None:
         try:
             repo_id = MODEL_CATALOG[engine_name]["repo_id"]
-            if self._em is not None:
-                engine = self._em.get_engine(engine_name)
-                if engine.is_loaded():
-                    self._append(f"Unloading {engine_name} to release file handles…")
-                    engine.unload()
+            # Unload first: Windows can't rmtree files a loaded model holds open.
+            engine = self._live_engine(engine_name)
+            if engine is not None and engine.is_loaded():
+                self._append(f"Unloading {engine_name} to release file handles…")
+                engine.unload()
             target = self._resolve(repo_id)
             if target is None:
                 self._append("No cached weights found — nothing to delete.")

@@ -65,11 +65,17 @@ class AsrService:
         return self._engine
 
     def status(self) -> dict[str, Any]:
+        e = self._engine
         return {
-            "model_id": getattr(self._engine, "_model_id", self._engine.name),
-            "loaded": self._engine.is_loaded(),
-            "downloaded": self._engine.downloaded(),
-            "languages": self._engine.languages(),
+            "name": e.name,
+            "model_id": getattr(e, "_model_id", e.name),
+            "display_name": e.display_name,
+            "description": e.description,
+            "license": e.license,
+            "model_url": e.model_url,
+            "loaded": e.is_loaded(),
+            "downloaded": e.downloaded(),
+            "languages": e.languages(),
         }
 
     # -- internals

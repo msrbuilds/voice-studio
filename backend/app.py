@@ -247,7 +247,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "qwen": EngineEnvInstaller("install-qwen"),
     }
     app.state.model_downloader = ModelDownloader()
-    app.state.model_deleter = ModelDeleter(em=engine_manager)
+    # asr_service so Whisper's weights are deletable too — it's absent from
+    # EngineManager, but it still must be unloaded before its files are removed.
+    app.state.model_deleter = ModelDeleter(em=engine_manager, asr_service=asr_service)
     app.state.engine_uninstallers = {
         "chatterbox": EngineEnvUninstaller("chatterbox", em=engine_manager),
         "omnivoice": EngineEnvUninstaller("omnivoice", em=engine_manager),
