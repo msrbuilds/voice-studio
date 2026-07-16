@@ -137,7 +137,11 @@ export function EngineSelector({
               </button>
             </div>
 
-            <ul className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
+            {/* One scroll region for every model. The speech-to-text group
+                must live inside it, not beside it: as a flex sibling of the
+                engines grid it was squeezed and overlapped the cards. */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {engines.map((e) => {
               const isActive = e.name === activeName;
               const switching = switchingTo === e.name;
@@ -350,7 +354,7 @@ export function EngineSelector({
                 also the model manager — without it there'd be no way to
                 reclaim its weights. */}
             {asr && (
-              <div className="px-4 pb-4">
+              <div>
                 <h3
                   className={`text-[11px] font-semibold uppercase tracking-wide mb-2 ${
                     isDark ? "text-zinc-400" : "text-gray-600"
@@ -461,6 +465,7 @@ export function EngineSelector({
                 </ul>
               </div>
             )}
+            </div>
 
             <div
               className={`px-5 py-3 text-[11px] border-t shrink-0 ${
