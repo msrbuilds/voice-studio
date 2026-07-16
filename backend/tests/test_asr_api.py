@@ -16,8 +16,14 @@ from backend.tests.test_smoke import _make_client  # noqa: E402
 
 
 class _StubAsr:
-    name = "stub"
+    # Mirrors the AsrEngine ABC's class attributes — /api/asr/status surfaces
+    # them so the engine popup can render a card without hardcoding strings.
+    name = "whisper"
     _model_id = "openai/whisper-large-v3-turbo"
+    display_name = "Whisper large-v3-turbo"
+    description = "OpenAI's speech-to-text model."
+    license = "MIT"
+    model_url = "https://huggingface.co/openai/whisper-large-v3-turbo"
 
     def is_loaded(self):
         return True
@@ -82,6 +88,20 @@ def test_asr_status(tmp_path):
     assert body["model_id"] == "openai/whisper-large-v3-turbo"
     assert body["loaded"] is True and body["downloaded"] is True
     assert body["languages"][0]["code"] == "en"
+    # The engine popup renders its Whisper card straight from these.
+    assert body["name"] == "whisper"
+    assert body["display_name"] == "Whisper large-v3-turbo"
+    assert body["license"] == "MIT"
+    assert body["model_url"].startswith("https://")
+
+
+def test_asr_status_exposes_real_engine_metadata(tmp_path):
+    """Regression: the card needs these from the real engine, not the stub."""
+    client = _make_client(tmp_path / "v", tmp_path / "u")
+    body = client.get("/api/asr/status").json()
+    assert body["name"] == "whisper"
+    assert body["display_name"] == "Whisper large-v3-turbo"
+    assert body["license"] == "MIT"
 
 
 def test_transcribe_requires_exactly_one_source(tmp_path):

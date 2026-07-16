@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { ChevronDown, Cpu, ExternalLink, Loader2, PackageX, Trash2, Volume2, X } from "lucide-react";
-import type { EngineInfo } from "@/types/models";
+import { ChevronDown, Cpu, ExternalLink, FileAudio, Loader2, PackageX, Trash2, Volume2, X } from "lucide-react";
+import type { AsrStatus, EngineInfo } from "@/types/models";
 import { focusRing } from "@/lib/theme";
 
 interface Props {
   isDark: boolean;
   engines: EngineInfo[];
+  /** Speech-to-text model. Rendered as a non-switchable card so its weights
+   *  are manageable; null while /api/asr/status is in flight or errored. */
+  asr: AsrStatus | null;
   activeName: string | null;
   onSelect: (name: string) => Promise<void>;
   onLoad: (name: string) => Promise<void>;
@@ -18,6 +21,7 @@ interface Props {
 export function EngineSelector({
   isDark,
   engines,
+  asr,
   activeName,
   onSelect,
   onLoad,
@@ -339,6 +343,124 @@ export function EngineSelector({
               );
             })}
             </ul>
+
+            {/* Speech-to-text. Whisper is audio->text, so it has no Switch:
+                it can't be "the active TTS engine" and is deliberately absent
+                from EngineManager. It lives here anyway because this popup is
+                also the model manager — without it there'd be no way to
+                reclaim its weights. */}
+            {asr && (
+              <div className="px-4 pb-4">
+                <h3
+                  className={`text-[11px] font-semibold uppercase tracking-wide mb-2 ${
+                    isDark ? "text-zinc-400" : "text-gray-600"
+                  }`}
+                >
+                  Speech-to-text
+                </h3>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <li
+                    className={`rounded-lg border p-4 ${
+                      isDark ? "border-zinc-800 bg-zinc-950/40" : "border-gray-300 bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex flex-col items-start gap-3">
+                      <div className="flex items-center justify-between w-full">
+                        <div
+                          className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            isDark ? "bg-zinc-800 text-zinc-400" : "bg-gray-200 text-gray-700"
+                          }`}
+                        >
+                          <FileAudio className="w-4 h-4" />
+                        </div>
+                        {asr.downloaded && (
+                          <button
+                            type="button"
+                            title="Delete downloaded weights"
+                            aria-label="Delete downloaded weights"
+                            onClick={() => {
+                              onDeleteWeights(asr.name);
+                              setOpen(false);
+                            }}
+                            className={`p-1.5 rounded-md transition-colors shrink-0 ${
+                              isDark
+                                ? "text-zinc-400 hover:text-red-400 hover:bg-red-500/10"
+                                : "text-gray-500 hover:text-red-600 hover:bg-red-50"
+                            } ${focusRing}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 w-full">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
+                            {asr.display_name}
+                          </span>
+                          {asr.loaded && (
+                            <span
+                              className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                                isDark ? "bg-zinc-800 text-zinc-400" : "bg-gray-200 text-gray-600"
+                              }`}
+                            >
+                              Loaded
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-xs mt-0.5 ${isDark ? "text-zinc-400" : "text-gray-600"}`}>
+                          {asr.description}
+                        </p>
+                        <div className={`text-xs mt-1.5 ${isDark ? "text-zinc-400" : "text-gray-600"}`}>
+                          {asr.languages.length > 0 ? `${asr.languages.length} languages` : "speech-to-text"}
+                          {" · 16 kHz · "}
+                          {asr.model_url ? (
+                            <a
+                              href={asr.model_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(ev) => ev.stopPropagation()}
+                              title={`${asr.license} license — open the model card on Hugging Face`}
+                              className={`inline-flex items-center gap-0.5 underline decoration-dotted underline-offset-2 transition-colors ${
+                                isDark ? "hover:text-orange-400" : "hover:text-orange-600"
+                              } ${focusRing}`}
+                            >
+                              {asr.license}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            asr.license
+                          )}
+                        </div>
+                        {asr.downloaded ? (
+                          <p
+                            className={`mt-2 text-xs px-3 py-1.5 rounded-md text-center ${
+                              isDark ? "bg-zinc-800/60 text-zinc-400" : "bg-gray-200/70 text-gray-600"
+                            }`}
+                          >
+                            Used by Transcribe mode
+                          </p>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDownload(asr.name);
+                              setOpen(false);
+                            }}
+                            className={`mt-2 w-full text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                              isDark
+                                ? "bg-orange-700/40 hover:bg-orange-700/60 text-orange-200"
+                                : "bg-orange-50 hover:bg-orange-100 text-orange-700"
+                            } ${focusRing}`}
+                          >
+                            {`Download ${asr.display_name}`}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            )}
 
             <div
               className={`px-5 py-3 text-[11px] border-t shrink-0 ${

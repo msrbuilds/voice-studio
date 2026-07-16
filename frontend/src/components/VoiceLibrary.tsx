@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { AudioWaveform, Binary, Cpu, Mic2, Moon, PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Sun, Trash2, Volume2 } from "lucide-react";
+import { AudioWaveform, Binary, Cpu, Mic2, Pencil, Plus, Trash2, Volume2 } from "lucide-react";
 import type { ConfigResponse, Voice, VoiceMetadata } from "@/types/models";
 import { UploadVoiceDialog } from "./UploadVoiceDialog";
 import { VoiceMetaDialog } from "./VoiceMetaDialog";
-import { useUpdate } from "@/hooks/useUpdate";
-import { UpdateDialog } from "./UpdateDialog";
+import { SidebarHeader, SidebarStrip } from "./SidebarHeader";
 import { ThemeToggle } from "./ThemeToggle";
 import { focusRing } from "@/lib/theme";
 import { defaultVoiceLibraryOpen } from "@/lib/layout";
@@ -38,8 +37,6 @@ export function VoiceLibrary({
   const confirm = useConfirm();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editingVoice, setEditingVoice] = useState<Voice | null>(null);
-  const { info: updateInfo, checking, check } = useUpdate();
-  const [updateOpen, setUpdateOpen] = useState(false);
 
   const LS_KEY = "vs.voiceLibrary.open";
   const [open, setOpen] = useState<boolean>(() => {
@@ -88,33 +85,12 @@ export function VoiceLibrary({
 
   if (!open) {
     return (
-      <aside
-        className={`w-12 shrink-0 z-10 border-r flex flex-col items-center pt-4 gap-3 transition-colors ${surface} ${border}`}
-      >
-        <img
-          src={isDark ? "/logo-dark-sm.png" : "/logo-light-sm.png"}
-          alt="Voice Studio logo"
-          width={36}
-          height={36}
-          className="w-9 h-9 rounded-lg"
-        />
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className={`p-2 rounded-lg transition-colors ${iconBtn} ${focusRing}`}
-          title="Open voice library"
-        >
-          <PanelLeftOpen className="w-5 h-5" />
-        </button>
-        <button
-          type="button"
-          onClick={onThemeToggle}
-          className={`p-2 rounded-lg transition-colors ${iconBtn} ${focusRing}`}
-          title="Toggle theme"
-        >
-          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
-      </aside>
+      <SidebarStrip
+        isDark={isDark}
+        onOpen={() => setOpen(true)}
+        openTitle="Open voice library"
+        onThemeToggle={onThemeToggle}
+      />
     );
   }
 
@@ -122,45 +98,12 @@ export function VoiceLibrary({
     <aside
       className={`w-64 shrink-0 z-10 border-r flex flex-col transition-colors ${surface} ${border}`}
     >
-      <div className={`p-3 xxl:p-4 border-b flex items-center gap-3 ${border}`}>
-        <img
-          src={isDark ? "/logo-dark-sm.png" : "/logo-light-sm.png"}
-          alt="Voice Studio logo"
-          width={36}
-          height={36}
-          className="w-9 h-9 rounded-lg shrink-0"
-        />
-        <div className="min-w-0 flex-1">
-          <h1 className={`font-semibold text-sm truncate ${isDark ? "text-white" : "text-gray-900"}`}>
-            Voice Studio by MSR
-          </h1>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className={`text-xs tabular-nums ${heading}`}>
-              v{config?.version ?? "—"}
-            </span>
-            <button
-              type="button"
-              onClick={() => updateInfo?.update_available ? setUpdateOpen(true) : void check()}
-              disabled={checking}
-              className={`relative p-0.5 rounded transition-colors ${iconBtn} ${focusRing}`}
-              title={updateInfo?.update_available ? `Update to v${updateInfo.latest}` : "Check for updates"}
-            >
-              <RefreshCw className={`w-3 h-3 ${checking ? "animate-spin" : ""}`} />
-              {updateInfo?.update_available && !checking && (
-                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500" />
-              )}
-            </button>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className={`p-1 rounded transition-colors ${iconBtn} ${focusRing}`}
-          title="Collapse voice library"
-        >
-          <PanelLeftClose className="w-4 h-4" />
-        </button>
-      </div>
+      <SidebarHeader
+        isDark={isDark}
+        version={config?.version}
+        onCollapse={() => setOpen(false)}
+        collapseTitle="Collapse voice library"
+      />
 
       <div className="flex-1 overflow-y-auto p-2.5 space-y-4">
         {/* Built-in voices */}
@@ -324,9 +267,6 @@ export function VoiceLibrary({
         }}
       />
 
-      {updateOpen && updateInfo && (
-        <UpdateDialog isDark={isDark} info={updateInfo} onClose={() => setUpdateOpen(false)} />
-      )}
     </aside>
   );
 }

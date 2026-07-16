@@ -198,7 +198,12 @@ class VoiceTranscribeResponse(BaseModel):
 
 
 class AsrStatusResponse(BaseModel):
+    name: str = "whisper"
     model_id: str
+    display_name: str = ""
+    description: str = ""
+    license: str = ""
+    model_url: str = ""
     loaded: bool
     downloaded: bool
     languages: list[EngineLanguageModel] = []

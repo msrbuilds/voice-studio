@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { PanelRightClose, PanelRightOpen, Github, Linkedin, Youtube, Globe } from "lucide-react";
 import { focusRing } from "@/lib/theme";
 import { defaultControlPanelOpen } from "@/lib/layout";
-import type { EngineInfo } from "@/types/models";
+import type { AsrStatus, EngineInfo } from "@/types/models";
 import { EngineSelector } from "./EngineSelector";
 import { CfgScaleBody } from "./CfgScaleControl";
 import { getCfgHints } from "@/lib/engineHints";
@@ -33,6 +33,9 @@ const SOCIAL_LINKS = [
 interface Props {
   isDark: boolean;
   engines: EngineInfo[];
+  /** Speech-to-text model, shown in the engine popup so its weights are
+   *  manageable. Null while /api/asr/status is loading. */
+  asr: AsrStatus | null;
   activeEngine: string | null;
   onSelectEngine: (name: string) => Promise<void>;
   onLoadEngine: (name: string) => Promise<void>;
@@ -54,6 +57,7 @@ interface Props {
 export function ControlPanel({
   isDark,
   engines,
+  asr,
   activeEngine,
   onSelectEngine,
   onLoadEngine,
@@ -142,6 +146,7 @@ export function ControlPanel({
           <EngineSelector
             isDark={isDark}
             engines={engines}
+            asr={asr}
             activeName={activeEngine}
             onSelect={onSelectEngine}
             onLoad={onLoadEngine}
