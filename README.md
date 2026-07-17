@@ -10,21 +10,9 @@ A local web UI for **multiple open-source TTS models** — switch engines from t
 
 Multi-segment **podcast editor** plus a single-textarea **text-to-voice** mode, voice uploads, per-voice cloning, GPU/CPU/MPS backend, fully offline after first run.
 
-<img width="2536" height="1433" alt="Voice Studio by MSR" src="https://github.com/user-attachments/assets/78ad65a4-67c9-4902-8627-8c8532a7176e" />
+<img width="2561" height="1440" alt="main-dark" src="https://github.com/user-attachments/assets/08fbac39-daa6-45a9-a4bd-9ca8a8711b07" />
 
-```
-┌──────────────────────────┐         ┌───────────────────────────┐
-│  React + Vite + Tailwind  │  HTTP   │   FastAPI (Python 3.10+)  │
-│  localhost:5173           │ ──────▶ │   localhost:8880          │
-│  - Engine selector        │         │  5 engines, one loaded:   │
-│  - Podcast / TTS modes    │         │   vibevoice · kokoro ·    │
-│  - Voice library          │         │   chatterbox · omnivoice ·│
-│  - Generate / Play / WAV  │         │   voxcpm                  │
-│                           │         │  (chatterbox/omnivoice/   │
-│                           │         │   voxcpm in isolated venvs│
-│                           │         │   as subprocesses)        │
-└──────────────────────────┘         └───────────────────────────┘
-```
+<img width="2561" height="1440" alt="main-light" src="https://github.com/user-attachments/assets/153a0a38-0db2-4bed-a044-dc32c29d275e" />
 
 ## Features
 
