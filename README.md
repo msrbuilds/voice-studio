@@ -9,8 +9,11 @@ A local web UI for **multiple open-source TTS models** — switch engines from t
 - **Chatterbox Multilingual V3** by [Resemble AI](https://huggingface.co/ResembleAI/chatterbox) — zero-shot voice cloning across 23 languages. Runs in its own isolated environment. MIT.
 - **OmniVoice** by [k2-fsa](https://huggingface.co/k2-fsa/OmniVoice) — 0.6B zero-shot multilingual TTS (600+ languages) with Clone / Design / Auto voice modes. Isolated environment. Apache-2.0.
 - **VoxCPM2** by [OpenBMB](https://huggingface.co/openbmb/VoxCPM2) — 2B tokenizer-free TTS, 48 kHz, 30 languages, with voice design and controllable + transcript-guided cloning. Isolated environment. Apache-2.0.
+- **Qwen3-TTS CustomVoice** by [Alibaba Qwen](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) — 1.7B with 9 premium built-in voices, free-text style control, and 10 languages, 24 kHz. Isolated environment. Apache-2.0.
 
-Multi-segment **podcast editor** plus a single-textarea **text-to-voice** mode, voice uploads, per-voice cloning, GPU/CPU/MPS backend, fully offline after first run.
+Plus **speech-to-text**: **Whisper large-v3-turbo** by [OpenAI](https://huggingface.co/openai/whisper-large-v3-turbo) runs in-process for the Transcribe mode — 99 languages, 16 kHz mono, exports `.srt` / `.vtt`. MIT.
+
+Three project modes — a multi-segment **podcast editor**, a single-textarea **text-to-voice** mode, and a **transcribe** mode (drop audio → editable transcript → subtitles) — plus voice uploads, per-voice cloning, GPU/CPU/MPS backend, fully offline after first run.
 
 <img width="2561" height="1440" alt="main-dark" src="https://github.com/user-attachments/assets/08fbac39-daa6-45a9-a4bd-9ca8a8711b07" />
 
@@ -18,9 +21,11 @@ Multi-segment **podcast editor** plus a single-textarea **text-to-voice** mode, 
 
 ## Features
 
-- **Five TTS engines, switchable from the UI** — VibeVoice, Kokoro, Chatterbox, OmniVoice, VoxCPM2; only one is loaded at a time. The isolated-environment engines (Chatterbox, OmniVoice, VoxCPM) **install / download weights / delete weights / uninstall** straight from the engine menu, with a live progress log.
-- **Two project modes** — a multi-segment **Podcast** editor and a single-textarea **Text-to-Voice** mode (with char / word / duration counts). Each mode keeps its own buffer.
+- **Six TTS engines, switchable from the UI** — VibeVoice, Kokoro, Chatterbox, OmniVoice, VoxCPM2, Qwen3-TTS CustomVoice; only one is loaded at a time. The isolated-environment engines (Chatterbox, OmniVoice, VoxCPM, Qwen) **install / download weights / delete weights / uninstall** straight from the engine menu, with a live progress log.
+- **Speech-to-text (Transcribe mode)** — **Whisper large-v3-turbo**, in-process, 99 languages. Drop an audio file for an editable transcript, then Copy, "Send to Text-to-Voice", or export `.srt` / `.vtt` subtitles. Also generates subtitles for audio you synthesized, and auto-fills a voice's reference transcript. Whisper's weights (~1.6 GB) download and delete from the engine menu like any other model.
+- **Three project modes** — a multi-segment **Podcast** editor, a single-textarea **Text-to-Voice** mode (with char / word / duration counts), and a **Transcribe** mode. Each mode keeps its own buffer.
 - **Voice modes** (OmniVoice & VoxCPM) — per-speaker **Clone / Design / Auto**. VoxCPM adds **controllable cloning** (clone + an inline style prompt) and **ultimate cloning** (reference + a per-voice transcript), plus a Fast / Balanced / High **Quality** control.
+- **Qwen style control** — Qwen3-TTS pairs 9 premium built-in voices with an always-on free-text **style prompt** and an Advanced panel (temperature / top-p / top-k / repetition penalty / seed).
 - **Multi-segment podcast editor** — author scripts with multiple speakers, generate each segment, play through, or export one joined WAV.
 - **Per-segment cache** — re-running the same text+voice+cfg uses the cached WAV (model is deterministic). A **Regenerate** button forces a fresh take.
 - **Backend disk cache** — `cache/` and `cache/downloads/` survive browser refreshes, server restarts, and model reloads.
@@ -39,9 +44,9 @@ Multi-segment **podcast editor** plus a single-textarea **text-to-voice** mode, 
 - **Python 3.10+** (3.11 tested)
 - **Node.js 18+** (Node 20 tested)
 - **PyTorch** with CUDA support (Windows / Linux), or CPU-only (slower), or Apple Silicon (MPS, experimental)
-- **Disk for model weights** (auto-downloaded on first use), per engine: Kokoro ~350 MB · Chatterbox ~500 MB · VoxCPM2 ~5 GB · VibeVoice ~5.4 GB · OmniVoice ~3.3 GB
-- **VRAM**: ~3 GB for VibeVoice fp16, up to ~8 GB for VoxCPM2; CPU mode works (slow) on ~2–4 GB RAM
-- **Isolated-environment engines** (Chatterbox, OmniVoice, VoxCPM) build their own venv on demand; **VoxCPM requires Python 3.10–3.12**
+- **Disk for model weights** (auto-downloaded on first use), per model: Kokoro ~350 MB · Chatterbox ~500 MB · Whisper ~1.6 GB · OmniVoice ~3.3 GB · Qwen3-TTS ~3.5 GB · VoxCPM2 ~5 GB · VibeVoice ~5.4 GB
+- **VRAM**: ~3 GB for VibeVoice fp16, up to ~8 GB for VoxCPM2; Whisper adds ~1.6 GB when transcribing; CPU mode works (slow) on ~2–4 GB RAM
+- **Isolated-environment engines** (Chatterbox, OmniVoice, VoxCPM, Qwen) build their own venv on demand; **VoxCPM requires Python 3.10–3.12**
 - **OS**: Windows 10/11, Linux, macOS
 
 ### System dependencies
@@ -89,11 +94,11 @@ Open <http://localhost:5173> (dev) or <http://localhost:8880> (prod). Flags afte
 
 > `studio.py` is the recommended path and only uses the Python standard library. If you'd rather wire things up by hand, the manual steps below do exactly the same thing.
 
-> **Some engines install separately.** Chatterbox, OmniVoice, and VoxCPM each need a
+> **Some engines install separately.** Chatterbox, OmniVoice, VoxCPM, and Qwen each need a
 > different (and mutually incompatible) `transformers` / `torch` stack, so each runs in
 > its own isolated environment (`backend/venv-chatterbox`, `backend/venv-omnivoice`,
-> `backend/venv-voxcpm`) as a subprocess. VibeVoice and Kokoro live in the main venv and
-> are unaffected.
+> `backend/venv-voxcpm`, `backend/venv-qwen`) as a subprocess. VibeVoice, Kokoro, and
+> Whisper (speech-to-text) live in the main venv and are unaffected.
 >
 > Install them **from the app** — open the engine menu and click **Install** next to the
 > engine; a dialog streams the build log, then **Download** fetches the weights, and you can
@@ -247,7 +252,7 @@ Base URL: `http://localhost:8880/api`
 | `GET` | `/engines` | List engines + the active one, each with capabilities and `installed` / `downloaded` flags. |
 | `POST` | `/engines/activate` | JSON `{name}`. Switch the active engine (unloads the previous one). |
 | `POST` | `/engines/{name}/load` | Eagerly load an engine (UI spinner). |
-| `GET` `POST` | `/engines/{name}/install` | Build / poll an isolated engine's venv (Chatterbox / OmniVoice / VoxCPM); streams a log. |
+| `GET` `POST` | `/engines/{name}/install` | Build / poll an isolated engine's venv (Chatterbox / OmniVoice / VoxCPM / Qwen); streams a log. |
 | `GET` `POST` | `/engines/{name}/download` | Download / poll an engine's weights with live progress. |
 | `GET` `POST` | `/engines/{name}/delete-weights` | Remove an engine's cached weights with progress. |
 | `GET` `POST` | `/engines/{name}/uninstall` | Remove an isolated engine's venv with progress. |
@@ -264,7 +269,7 @@ Base URL: `http://localhost:8880/api`
 
 ## Notes & gotchas
 
-- **One engine loads at a time.** Switching engines unloads the previous model to keep memory low; the active choice persists across restarts (`backend/.last_engine`). Chatterbox, OmniVoice, and VoxCPM run as a subprocess in their own isolated venv (incompatible `transformers` / `torch` pins); VibeVoice and Kokoro share the main venv.
+- **One engine loads at a time.** Switching engines unloads the previous model to keep memory low; the active choice persists across restarts (`backend/.last_engine`). Chatterbox, OmniVoice, VoxCPM, and Qwen run as a subprocess in their own isolated venv (incompatible `transformers` / `torch` pins); VibeVoice and Kokoro share the main venv. Whisper (speech-to-text) also runs in the main venv but is separate from the TTS engine switch — it's used by Transcribe mode, not selectable as an engine.
 - **VibeVoice-1.5B supports up to 4 speakers** with voice cloning from short reference clips. Voice identity comes from a 1–60s clip you assign to each speaker in the sidebar. (Other engines synthesize one speaker per line and the backend concatenates, so multi-speaker scripts still work.)
 - **Microsoft removed the original repo and code in Sept 2025** for responsible-AI reasons. The `vibevoice` Python package (from the community fork) and the 1.5B weights (from `microsoft/VibeVoice-1.5B` on HuggingFace) are how you run it now. The model embeds an audible AI disclaimer in every clip and logs a hashed request ID, per Microsoft's policy.
 - **First-boot download is ~5.4 GB.** Model weights cache to `backend/models/` (override with the `MODELS_DIR` env var, `--models-dir` CLI flag, or `HF_HOME`).
