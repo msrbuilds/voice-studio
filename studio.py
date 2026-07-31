@@ -167,6 +167,10 @@ def _ensure_uv() -> Path | None:
     # corrupted download, so skip the filename check. pip doesn't enforce it.
     # setdefault so a user-provided value still wins.
     os.environ.setdefault("UV_SKIP_WHEEL_FILENAME_CHECK", "1")
+    # uv's default HTTP timeout (30s) is too short for large binary wheels on a
+    # slow/unstable connection — e.g. torch, or ctranslate2 (pulled in by
+    # argostranslate) — which fail with "network timeout". Give it 5 minutes.
+    os.environ.setdefault("UV_HTTP_TIMEOUT", "300")
     _UV_RESOLVED["uv"] = uv
     return uv
 
